@@ -526,7 +526,8 @@ detect_project_type() {
 
     # Node.js / Bun project
     if [[ -f "package.json" ]]; then
-        if [[ -f "bun.lockb" ]] || command -v bun &>/dev/null; then
+        # Check for both bun.lockb (legacy binary) and bun.lock (v1.1+ text format)
+        if [[ -f "bun.lockb" || -f "bun.lock" ]] || command -v bun &>/dev/null; then
             detected="Bun/Node.js"
             log_status "INFO" "Detected: Bun/Node.js project"
             suggest_tool_permission "Bash(bun *)"

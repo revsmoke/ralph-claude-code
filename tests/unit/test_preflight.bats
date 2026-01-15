@@ -292,3 +292,23 @@ name = "test"' > Cargo.toml
     # Help text should show 30 as default timeout
     [[ "$output" == *"30"* ]]
 }
+
+# =============================================================================
+# BUN LOCKFILE DETECTION TESTS (1 test)
+# =============================================================================
+
+@test "preflight detects Bun project via bun.lock (v1.1+ text lockfile)" {
+    echo "# Test Prompt" > PROMPT.md
+    echo '{"name": "test"}' > package.json
+    touch bun.lock  # v1.1+ text lockfile (NOT bun.lockb)
+
+    source lib/date_utils.sh
+    source lib/response_analyzer.sh
+    source lib/circuit_breaker.sh
+    source lib/evidence_collector.sh
+    source "$RALPH_SCRIPT"
+
+    run detect_project_type
+
+    [[ "$output" == *"Bun"* ]]
+}

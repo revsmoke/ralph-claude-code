@@ -338,3 +338,45 @@ EOF
     [[ "$output" == *"Commits="* ]]
     [[ "$output" == *"Files="* ]]
 }
+
+# =============================================================================
+# BUN LOCKFILE DETECTION TESTS (2 tests)
+# =============================================================================
+
+@test "verify_tests detects bun via bun.lock (text lockfile)" {
+    init_evidence_collector
+
+    # Create bun.lock (v1.1+ text format) and package.json
+    touch bun.lock
+    echo '{"name": "test-project"}' > package.json
+
+    # Create a passing test runner
+    echo '#!/bin/bash
+echo "1 passing"
+exit 0' > test_runner.sh
+    chmod +x test_runner.sh
+
+    verify_tests "./test_runner.sh"
+
+    local status=$(jq -r '.verification_gates.tests_passed.status' .ralph_evidence.json)
+    [ "$status" = "VERIFIED" ]
+}
+
+@test "verify_tests detects bun via bun.lockb (binary lockfile)" {
+    init_evidence_collector
+
+    # Create bun.lockb (legacy binary format) and package.json
+    touch bun.lockb
+    echo '{"name": "test-project"}' > package.json
+
+    # Create a passing test runner
+    echo '#!/bin/bash
+echo "1 passing"
+exit 0' > test_runner.sh
+    chmod +x test_runner.sh
+
+    verify_tests "./test_runner.sh"
+
+    local status=$(jq -r '.verification_gates.tests_passed.status' .ralph_evidence.json)
+    [ "$status" = "VERIFIED" ]
+}

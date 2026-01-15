@@ -105,7 +105,8 @@ verify_tests() {
     # Auto-detect test command if not provided
     if [[ -z "$test_command" ]]; then
         if [[ -f "package.json" ]]; then
-            if command -v bun &>/dev/null && [[ -f "bun.lockb" ]]; then
+            # Check for both bun.lockb (legacy binary) and bun.lock (v1.1+ text format)
+            if command -v bun &>/dev/null && [[ -f "bun.lockb" || -f "bun.lock" ]]; then
                 test_command="bun test"
             elif command -v npm &>/dev/null; then
                 test_command="npm test"
