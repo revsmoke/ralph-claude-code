@@ -471,37 +471,21 @@ build_loop_context() {
 # Note: Returns 0 for files less than 1 hour old
 get_session_file_age_hours() {
     local file=$1
+    [[ -f "$file" ]] || { echo "0"; return; }
 
-    if [[ ! -f "$file" ]]; then
-        echo "0"
-        return
-    fi
-
-    local os_type
-    os_type=$(uname)
-
-    local file_mtime
-    if [[ "$os_type" == "Darwin" ]]; then
-        # macOS (BSD stat)
-        file_mtime=$(stat -f %m "$file" 2>/dev/null)
+    local file_mtime=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        file_mtime=$(stat -f %m "$file" 2>/dev/null || true)
+        [[ "$file_mtime" =~ ^[0-9]+$ ]] || file_mtime=$(stat -c %Y "$file" 2>/dev/null || true)
     else
-        # Linux (GNU stat)
-        file_mtime=$(stat -c %Y "$file" 2>/dev/null)
+        file_mtime=$(stat -c %Y "$file" 2>/dev/null || true)
+        [[ "$file_mtime" =~ ^[0-9]+$ ]] || file_mtime=$(stat -f %m "$file" 2>/dev/null || true)
     fi
 
-    # Handle stat failure - return -1 to indicate error
-    # This prevents false expiration when stat fails
-    if [[ -z "$file_mtime" || "$file_mtime" == "0" ]]; then
-        echo "-1"
-        return
-    fi
+    [[ "$file_mtime" =~ ^[0-9]+$ ]] || { echo "-1"; return; }
 
-    local current_time
-    current_time=$(date +%s)
-
-    local age_seconds=$((current_time - file_mtime))
-    local age_hours=$((age_seconds / 3600))
-
+    local age_seconds=$(( $(date +%s) - file_mtime ))
+    echo $((age_seconds / 3600))
     echo "$age_hours"
 }
 
