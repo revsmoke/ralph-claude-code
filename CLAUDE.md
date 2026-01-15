@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the Ralph for Claude Code repository - an autonomous AI development loop system that enables continuous development cycles with intelligent exit detection and rate limiting.
 
-**Version**: v0.9.8 | **Tests**: 276 passing (100% pass rate) | **CI/CD**: GitHub Actions
+**Version**: v0.9.9 | **Tests**: 344 passing (100% pass rate) | **CI/CD**: GitHub Actions
 
 ## Core Architecture
 
@@ -52,6 +52,13 @@ The system uses a modular architecture with reusable components in the `lib/` di
    - ISO timestamp generation for logging
    - Epoch time calculations for rate limiting
 
+4. **lib/evidence_collector.sh** - Evidence-based verification system
+   - Prevents premature exit by requiring artifact verification
+   - Six verification gates: tests, documentation, CLI, files, commits, fix_plan
+   - Creates `.ralph_evidence.json` with verification status
+   - Triple-gate exit condition: `completion_indicators + EXIT_SIGNAL + evidence_verified`
+   - Functions: `verify_tests()`, `verify_documentation()`, `verify_cli()`, `verify_file_changes()`, `verify_commits()`, `verify_fix_plan()`, `run_all_verifications()`, `is_exit_allowed()`
+
 ## Key Commands
 
 ### Installation
@@ -90,6 +97,14 @@ ralph --circuit-status
 
 # Session management
 ralph --reset-session    # Reset session state manually
+
+# Evidence verification
+ralph --verify-evidence  # Run verification gates manually
+ralph --evidence-status  # Show current evidence state
+ralph --skip-evidence    # Skip evidence verification (escape hatch)
+
+# State management
+ralph --reset-all        # Clear all state files for fresh start
 ```
 
 ### Monitoring
@@ -333,18 +348,20 @@ Ralph uses advanced error detection with two-stage filtering to eliminate false 
 
 ## Test Suite
 
-### Test Files (265 tests total)
+### Test Files (344 tests total)
 
 | File | Tests | Description |
 |------|-------|-------------|
 | `test_cli_parsing.bats` | 27 | CLI argument parsing for all 12 flags |
 | `test_cli_modern.bats` | 29 | Modern CLI commands (Phase 1.1) + build_claude_command fix |
-| `test_json_parsing.bats` | 36 | JSON output format parsing + Claude CLI format + session management |
-| `test_session_continuity.bats` | 26 | Session lifecycle management + circuit breaker integration |
-| `test_exit_detection.bats` | 20 | Exit signal detection |
+| `test_json_parsing.bats` | 38 | JSON output format parsing + Claude CLI format + session management |
+| `test_session_continuity.bats` | 42 | Session lifecycle management + circuit breaker integration |
+| `test_exit_detection.bats` | 31 | Exit signal detection |
 | `test_rate_limiting.bats` | 15 | Rate limiting behavior |
+| `test_evidence_collector.bats` | 20 | Evidence verification gates (tests, docs, CLI, files, commits, plan) |
+| `test_preflight.bats` | 14 | Preflight checks, project detection, reset-all flag |
 | `test_loop_execution.bats` | 20 | Integration tests |
-| `test_edge_cases.bats` | 20 | Edge case handling |
+| `test_edge_cases.bats` | 25 | Edge case handling |
 | `test_installation.bats` | 14 | Global installation/uninstall workflows |
 | `test_project_setup.bats` | 36 | Project setup (setup.sh) validation |
 | `test_prd_import.bats` | 33 | PRD import (ralph_import.sh) workflows + modern CLI tests |
@@ -362,6 +379,42 @@ bats tests/unit/test_cli_parsing.bats
 ```
 
 ## Recent Improvements
+
+### Evidence Verification & Preflight Checks (v0.9.9)
+
+Based on lessons learned from real-world usage (Driftwarden project), this release adds safeguards against premature task completion:
+
+**Evidence-Based Verification System**
+- New library: `lib/evidence_collector.sh` with 6 verification gates
+- Creates `.ralph_evidence.json` to track artifact verification status
+- Gates: `tests_passed`, `documentation_exists`, `cli_functional`, `files_modified`, `commits_made`, `fix_plan_complete`
+- Triple-gate exit condition: `completion_indicators + EXIT_SIGNAL + evidence_verified`
+- Functions: `init_evidence_collector()`, `verify_tests()`, `verify_documentation()`, `verify_cli()`, `verify_file_changes()`, `verify_commits()`, `verify_fix_plan()`, `run_all_verifications()`, `is_exit_allowed()`
+
+**Tooling Preflight Checks**
+- Project type detection: Node.js/Bun, Python, Rust, Go
+- Tool availability checks: jq, git, Claude CLI
+- Tool permission suggestions based on detected project type
+- PROMPT.md existence verification before loop starts
+
+**New CLI Flags**
+- `--verify-evidence` - Manually run verification gates
+- `--evidence-status` - Show current evidence state
+- `--skip-evidence` - Skip evidence verification (escape hatch)
+- `--reset-all` - Clear all state files for fresh start
+
+**Configuration Changes**
+- Default timeout increased from 15 to 30 minutes
+- Better suited for implementation + documentation cycles
+
+**Template Updates**
+- `templates/PROMPT.md` - Added evidence requirements section
+- `templates/fix_plan.md` - Added completion verification checklist
+
+**Testing**
+- Added 20 tests for evidence collector (`test_evidence_collector.bats`)
+- Added 14 tests for preflight checks (`test_preflight.bats`)
+- Test count: 344 (up from 276)
 
 ### Modern CLI for PRD Import (v0.9.8)
 - Modernized `ralph_import.sh` to use Claude Code CLI JSON output format

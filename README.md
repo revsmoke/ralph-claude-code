@@ -3,7 +3,7 @@
 [![CI](https://github.com/frankbria/ralph-claude-code/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/ralph-claude-code/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/badge/version-0.9.9-blue)
-![Tests](https://img.shields.io/badge/tests-308%20passing-green)
+![Tests](https://img.shields.io/badge/tests-344%20passing-green)
 [![GitHub Issues](https://img.shields.io/github/issues/frankbria/ralph-claude-code)](https://github.com/frankbria/ralph-claude-code/issues)
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
@@ -18,11 +18,13 @@ Ralph is an implementation of the Geoffrey Huntley's technique for Claude Code t
 
 **Version**: v0.9.9 - Active Development
 **Core Features**: Working and tested
-**Test Coverage**: 308 tests, 100% pass rate
+**Test Coverage**: 344 tests, 100% pass rate
 
 ### What's Working Now
 - Autonomous development loops with intelligent exit detection
-- **Dual-condition exit gate**: Requires BOTH completion indicators AND explicit EXIT_SIGNAL
+- **Triple-gate exit condition**: Requires completion indicators + EXIT_SIGNAL + evidence verification
+- **Evidence-based verification**: 6 gates (tests, docs, CLI, files, commits, fix_plan) must pass before exit
+- **Preflight checks**: Project type detection and tool availability verification
 - Rate limiting with hourly reset (100 calls/hour, configurable)
 - Circuit breaker with advanced error detection (prevents runaway loops)
 - Response analyzer with semantic understanding and two-stage error filtering
@@ -30,24 +32,33 @@ Ralph is an implementation of the Geoffrey Huntley's technique for Claude Code t
 - **Session continuity with `--continue` flag for context preservation**
 - **Session expiration with configurable timeout (default: 24 hours)**
 - **Modern CLI flags: `--output-format`, `--allowed-tools`, `--no-continue`**
+- **State management: `--reset-all`, `--verify-evidence`, `--evidence-status`**
 - Multi-line error matching for accurate stuck loop detection
 - 5-hour API limit handling with user prompts
 - tmux integration for live monitoring
 - PRD import functionality
 - **CI/CD pipeline with GitHub Actions**
 - **Dedicated uninstall script for clean removal**
-- 308 passing tests across 11 test files
+- 344 passing tests across 13 test files
 
 ### Recent Improvements
 
-**v0.9.9 - EXIT_SIGNAL Gate & Uninstall Script**
+**v0.9.9 - Evidence Verification & Preflight Checks**
+Based on lessons learned from real-world usage (Driftwarden project):
+- **Evidence-based verification system**: New `lib/evidence_collector.sh` with 6 verification gates
+- **Triple-gate exit condition**: `completion_indicators + EXIT_SIGNAL + evidence_verified`
+- **Preflight checks**: Project type detection (Node/Python/Rust/Go), tool availability
+- **New CLI flags**: `--verify-evidence`, `--evidence-status`, `--skip-evidence`, `--reset-all`
+- **Default timeout increased** from 15 to 30 minutes for better completion rates
+- **Template updates**: Added verification requirements to PROMPT.md and fix_plan.md
+- Added 34 new tests for evidence collector and preflight checks
+- Test count: 344 (up from 310)
+
+**v0.9.8.1 - EXIT_SIGNAL Gate & Uninstall Script**
 - Fixed premature exit bug: completion indicators now require Claude's explicit `EXIT_SIGNAL: true`
 - Added dual-condition check preventing exits when Claude reports work in progress
-- Added `response_analyzer.sh` fix to respect explicit EXIT_SIGNAL over heuristics
 - Added dedicated `uninstall.sh` script for clean Ralph removal
 - Session expiration with configurable timeout (default: 24 hours)
-- Added 32 new tests for EXIT_SIGNAL behavior and session expiration
-- Test count: 308 (up from 276)
 
 **v0.9.8 - Modern CLI for PRD Import**
 - Modernized `ralph_import.sh` to use Claude Code CLI JSON output format
@@ -112,7 +123,9 @@ Ralph is an implementation of the Geoffrey Huntley's technique for Claude Code t
 ## Features
 
 - **Autonomous Development Loop** - Continuously executes Claude Code with your project requirements
-- **Intelligent Exit Detection** - Dual-condition check requiring BOTH completion indicators AND explicit EXIT_SIGNAL
+- **Evidence-Based Verification** - Six verification gates (tests, docs, CLI, files, commits, fix_plan) prevent premature exits
+- **Triple-Gate Exit Condition** - Requires completion indicators + EXIT_SIGNAL + evidence verification
+- **Preflight Checks** - Detects project type and verifies tool availability before starting
 - **Session Continuity** - Preserves context across loop iterations with automatic session management
 - **Session Expiration** - Configurable timeout (default: 24 hours) with automatic session reset
 - **Rate Limiting** - Built-in API call management with hourly limits and countdown timers
@@ -121,12 +134,13 @@ Ralph is an implementation of the Geoffrey Huntley's technique for Claude Code t
 - **Task Management** - Structured approach with prioritized task lists and progress tracking
 - **Project Templates** - Quick setup for new projects with best-practice structure
 - **Comprehensive Logging** - Detailed execution logs with timestamps and status tracking
-- **Configurable Timeouts** - Set execution timeout for Claude Code operations (1-120 minutes)
+- **Configurable Timeouts** - Set execution timeout for Claude Code operations (1-120 minutes, default: 30)
 - **Verbose Progress Mode** - Optional detailed progress updates during execution
 - **Response Analyzer** - AI-powered analysis of Claude Code responses with semantic understanding
 - **Circuit Breaker** - Advanced error detection with two-stage filtering, multi-line error matching, and automatic recovery
 - **CI/CD Integration** - GitHub Actions workflow with automated testing
 - **Clean Uninstall** - Dedicated uninstall script for complete removal
+- **State Reset** - `--reset-all` clears all state files for fresh starts
 
 ## Quick Start
 
@@ -349,14 +363,14 @@ ralph --monitor --prompt my_custom_instructions.md
 ### Execution Timeouts
 
 ```bash
-# Set Claude Code execution timeout (default: 15 minutes)
-ralph --timeout 30  # 30-minute timeout for complex tasks
+# Set Claude Code execution timeout (default: 30 minutes)
+ralph --timeout 60  # 60-minute timeout for very complex tasks
 
 # With monitoring and custom timeout
-ralph --monitor --timeout 60  # 60-minute timeout
+ralph --monitor --timeout 45  # 45-minute timeout
 
 # Short timeout for quick iterations
-ralph --verbose --timeout 5  # 5-minute timeout with progress
+ralph --verbose --timeout 10  # 10-minute timeout with progress
 ```
 
 ### Verbose Mode
@@ -397,6 +411,36 @@ cat .ralph_session_history      # View session transition history
 
 Sessions are persisted to `.ralph_session` with a configurable expiration (default: 24 hours). The last 50 session transitions are logged to `.ralph_session_history` for debugging.
 
+### Evidence Verification
+
+Ralph uses evidence-based verification to prevent premature exits:
+
+```bash
+# Run verification gates manually
+ralph --verify-evidence
+
+# Show current evidence state
+ralph --evidence-status
+
+# Skip evidence verification (escape hatch)
+ralph --skip-evidence
+
+# Clear all state files for fresh start
+ralph --reset-all
+```
+
+**Verification Gates:**
+| Gate | What It Checks | Pass Condition |
+|------|---------------|----------------|
+| `tests_passed` | Test command execution | Exit code 0, tests pass |
+| `documentation_exists` | `docs/generated/` content | At least 1 file present |
+| `cli_functional` | `--help` flag works | Exit code 0, help shown |
+| `files_modified` | `git diff` output | At least 1 file changed |
+| `commits_made` | `git log` output | At least 1 commit in session |
+| `fix_plan_complete` | `@fix_plan.md` checkboxes | All `- [ ]` are `- [x]` |
+
+Evidence is tracked in `.ralph_evidence.json` with detailed verification results.
+
 ### Exit Thresholds
 
 Modify these variables in `~/.ralph/ralph_loop.sh`:
@@ -415,14 +459,17 @@ CB_SAME_ERROR_THRESHOLD=5        # Open circuit after 5 loops with repeated erro
 CB_OUTPUT_DECLINE_THRESHOLD=70   # Open circuit if output declines by >70%
 ```
 
-**Completion Indicators with EXIT_SIGNAL Gate:**
+**Triple-Gate Exit Condition:**
 
-| completion_indicators | EXIT_SIGNAL | Result |
-|-----------------------|-------------|--------|
-| >= 2 | `true` | **Exit** ("project_complete") |
-| >= 2 | `false` | **Continue** (Claude still working) |
-| >= 2 | missing | **Continue** (defaults to false) |
-| < 2 | `true` | **Continue** (threshold not met) |
+| completion_indicators | EXIT_SIGNAL | evidence_verified | Result |
+|-----------------------|-------------|-------------------|--------|
+| >= 2 | `true` | `true` | **Exit** ("project_complete") |
+| >= 2 | `true` | `false` | **Continue** (evidence gates failed) |
+| >= 2 | `false` | any | **Continue** (Claude still working) |
+| >= 2 | missing | any | **Continue** (defaults to false) |
+| < 2 | `true` | any | **Continue** (threshold not met) |
+
+Use `--skip-evidence` to bypass evidence verification if needed.
 
 ## Project Structure
 
@@ -430,15 +477,16 @@ Ralph creates a standardized structure for each project:
 
 ```
 my-project/
-├── PROMPT.md           # Main development instructions for Ralph
-├── @fix_plan.md        # Prioritized task list (@ prefix = Ralph control file)
-├── @AGENT.md           # Build and run instructions
-├── specs/              # Project specifications and requirements
-│   └── stdlib/         # Standard library specifications
-├── src/                # Source code implementation
-├── examples/           # Usage examples and test cases
-├── logs/               # Ralph execution logs
-└── docs/generated/     # Auto-generated documentation
+├── PROMPT.md              # Main development instructions for Ralph
+├── @fix_plan.md           # Prioritized task list (@ prefix = Ralph control file)
+├── @AGENT.md              # Build and run instructions
+├── .ralph_evidence.json   # Evidence verification tracking (auto-generated)
+├── specs/                 # Project specifications and requirements
+│   └── stdlib/            # Standard library specifications
+├── src/                   # Source code implementation
+├── examples/              # Usage examples and test cases
+├── logs/                  # Ralph execution logs
+└── docs/generated/        # Auto-generated documentation
 ```
 
 ## Best Practices
@@ -483,7 +531,7 @@ If you want to run the test suite:
 # Install BATS testing framework
 npm install -g bats bats-support bats-assert
 
-# Run all tests (308 tests)
+# Run all tests (344 tests)
 npm test
 
 # Run specific test suites
@@ -493,6 +541,8 @@ bats tests/unit/test_json_parsing.bats
 bats tests/unit/test_cli_modern.bats
 bats tests/unit/test_cli_parsing.bats
 bats tests/unit/test_session_continuity.bats
+bats tests/unit/test_evidence_collector.bats
+bats tests/unit/test_preflight.bats
 bats tests/integration/test_loop_execution.bats
 bats tests/integration/test_prd_import.bats
 bats tests/integration/test_project_setup.bats
@@ -504,10 +554,10 @@ bats tests/integration/test_installation.bats
 ```
 
 Current test status:
-- **308 tests** across 11 test files
-- **100% pass rate** (308/308 passing)
+- **344 tests** across 13 test files
+- **100% pass rate** (344/344 passing)
 - Comprehensive unit and integration tests
-- Specialized tests for JSON parsing, CLI flags, circuit breaker, EXIT_SIGNAL behavior, and installation workflows
+- Specialized tests for JSON parsing, CLI flags, circuit breaker, EXIT_SIGNAL behavior, evidence verification, preflight checks, and installation workflows
 
 > **Note on Coverage**: Bash code coverage measurement with kcov has fundamental limitations when tracing subprocess executions. Test pass rate (100%) is the quality gate. See [bats-core#15](https://github.com/bats-core/bats-core/issues/15) for details.
 
@@ -591,7 +641,7 @@ cd ralph-claude-code
 
 # Install dependencies and run tests
 npm install
-npm test  # All 308 tests must pass
+npm test  # All 344 tests must pass
 ```
 
 ### Priority Contribution Areas
@@ -639,13 +689,17 @@ ralph [OPTIONS]
   -s, --status            Show current status and exit
   -m, --monitor           Start with tmux session and live monitor
   -v, --verbose           Show detailed progress updates during execution
-  -t, --timeout MIN       Set Claude Code execution timeout in minutes (1-120, default: 15)
+  -t, --timeout MIN       Set Claude Code execution timeout in minutes (1-120, default: 30)
   --output-format FORMAT  Set output format: json (default) or text
   --allowed-tools TOOLS   Set allowed Claude tools (default: Write,Bash(git *),Read)
   --no-continue           Disable session continuity (start fresh each loop)
   --reset-circuit         Reset the circuit breaker
   --circuit-status        Show circuit breaker status
   --reset-session         Reset session state manually
+  --verify-evidence       Run verification gates manually
+  --evidence-status       Show current evidence state
+  --skip-evidence         Skip evidence verification (escape hatch)
+  --reset-all             Clear all state files for fresh start
 ```
 
 ### Project Commands (Per Project)
@@ -655,9 +709,12 @@ ralph-import prd.md project  # Convert PRD/specs to Ralph project
 ralph --monitor              # Start with integrated monitoring
 ralph --status               # Check current loop status
 ralph --verbose              # Enable detailed progress updates
-ralph --timeout 30           # Set 30-minute execution timeout
+ralph --timeout 45           # Set 45-minute execution timeout
 ralph --calls 50             # Limit to 50 API calls per hour
 ralph --reset-session        # Reset session state manually
+ralph --verify-evidence      # Check verification gate status
+ralph --evidence-status      # Show detailed evidence state
+ralph --reset-all            # Clear all state for fresh start
 ralph-monitor                # Manual monitoring dashboard
 ```
 
@@ -678,10 +735,12 @@ Ralph is under active development with a clear path to v1.0.0. See [IMPLEMENTATI
 
 **What's Delivered:**
 - Core loop functionality with intelligent exit detection
-- **Dual-condition exit gate** (completion indicators + EXIT_SIGNAL)
+- **Triple-gate exit condition** (completion indicators + EXIT_SIGNAL + evidence verification)
+- **Evidence-based verification** with 6 verification gates
+- **Preflight checks** for project type and tool detection
 - Rate limiting (100 calls/hour) and circuit breaker pattern
 - Response analyzer with semantic understanding
-- 308 comprehensive tests (100% pass rate)
+- 344 comprehensive tests (100% pass rate)
 - tmux integration and live monitoring
 - PRD import functionality with modern CLI JSON parsing
 - Installation system and project templates
@@ -691,11 +750,12 @@ Ralph is under active development with a clear path to v1.0.0. See [IMPLEMENTATI
 - Session lifecycle management with auto-reset triggers
 - Session expiration with configurable timeout
 - Dedicated uninstall script
+- State reset command (`--reset-all`)
 
 **Test Coverage Breakdown:**
-- Unit Tests: 164 (CLI parsing, JSON, exit detection, rate limiting, session continuity)
-- Integration Tests: 144 (loop execution, edge cases, installation, project setup, PRD import)
-- Test Files: 11
+- Unit Tests: 216 (CLI parsing, JSON, exit detection, rate limiting, session continuity, evidence collector, preflight)
+- Integration Tests: 128 (loop execution, edge cases, installation, project setup, PRD import)
+- Test Files: 13
 
 ### Path to v1.0.0 (~4 weeks)
 
