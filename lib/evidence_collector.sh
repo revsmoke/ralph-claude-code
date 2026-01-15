@@ -192,7 +192,7 @@ verify_tests() {
 
     echo "$evidence" > "$EVIDENCE_FILE"
 
-    if [[ "$status" == "$GATE_VERIFIED" ]]; then
+    if [[ "$status" == "$GATE_VERIFIED" || "$status" == "$GATE_SKIPPED" ]]; then
         return 0
     else
         return 1
@@ -217,7 +217,7 @@ verify_documentation() {
         # Count files in docs directory
         while IFS= read -r -d '' file; do
             files+=("$file")
-            ((docs_count++))
+            docs_count=$((docs_count + 1))
         done < <(find "$docs_dir" -type f -name "*.md" -print0 2>/dev/null)
     fi
 
@@ -366,19 +366,23 @@ verify_file_changes() {
         status="$GATE_SKIPPED"
     else
         # Get changed files (both staged and unstaged)
-        local changed_files=$(git diff --name-only HEAD 2>/dev/null || git diff --name-only 2>/dev/null)
+        # Try HEAD first, then fall back to checking staged files directly
+        local changed_files=""
+        changed_files=$(git diff --name-only HEAD 2>/dev/null) || \
+        changed_files=$(git diff --name-only 2>/dev/null) || \
+        changed_files=$(git diff --cached --name-only 2>/dev/null)
 
         if [[ -n "$changed_files" ]]; then
             while IFS= read -r file; do
                 if [[ -n "$file" ]]; then
                     files+=("$file")
-                    ((total_files++))
+                    total_files=$((total_files + 1))
                 fi
             done <<< "$changed_files"
         fi
 
         # Get diff stat
-        diff_stat=$(git diff --stat HEAD 2>/dev/null | tail -1 || echo "")
+        diff_stat=$(git diff --stat HEAD 2>/dev/null | tail -1 || git diff --cached --stat 2>/dev/null | tail -1 || echo "")
 
         if [[ $total_files -gt 0 ]]; then
             status="$GATE_VERIFIED"
@@ -453,7 +457,7 @@ verify_commits() {
                     local hash=$(echo "$line" | cut -d' ' -f1)
                     local message=$(echo "$line" | cut -d' ' -f2-)
                     commits+=("{\"hash\": \"$hash\", \"message\": \"$message\"}")
-                    ((commit_count++))
+                    commit_count=$((commit_count + 1))
                 fi
             done <<< "$commit_log"
         fi

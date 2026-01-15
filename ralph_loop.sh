@@ -660,7 +660,7 @@ reset_all_state() {
         if [[ -f "$file" ]]; then
             rm "$file"
             log_status "INFO" "  Removed: $file"
-            ((removed_count++))
+            removed_count=$((removed_count + 1))
         fi
     done
 
