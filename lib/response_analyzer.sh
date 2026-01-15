@@ -300,6 +300,7 @@ analyze_response() {
     # Track whether an explicit EXIT_SIGNAL was found in RALPH_STATUS block
     # If explicit signal found, heuristics should NOT override Claude's intent
     local explicit_exit_signal_found=false
+    local allow_completion_heuristics=true
 
     # 1. Check for explicit structured output (if Claude follows schema)
     if grep -q -- "---RALPH_STATUS---" "$output_file"; then
@@ -310,6 +311,7 @@ analyze_response() {
         # If EXIT_SIGNAL is explicitly provided, respect it
         if [[ -n "$exit_sig" ]]; then
             explicit_exit_signal_found=true
+            allow_completion_heuristics=false
             if [[ "$exit_sig" == "true" ]]; then
                 has_completion_signal=true
                 exit_signal=true
@@ -327,13 +329,15 @@ analyze_response() {
     fi
 
     # 2. Detect completion keywords in natural language output
-    for keyword in "${COMPLETION_KEYWORDS[@]}"; do
-        if grep -qi "$keyword" "$output_file"; then
-            has_completion_signal=true
-            ((confidence_score+=10))
-            break
-        fi
-    done
+    if [[ "$allow_completion_heuristics" == "true" ]]; then
+        for keyword in "${COMPLETION_KEYWORDS[@]}"; do
+            if grep -qi "$keyword" "$output_file"; then
+                has_completion_signal=true
+                ((confidence_score+=10))
+                break
+            fi
+        done
+    fi
 
     # 3. Detect test-only loops
     local test_command_count=0
@@ -375,14 +379,16 @@ analyze_response() {
     fi
 
     # 5. Detect "nothing to do" patterns
-    for pattern in "${NO_WORK_PATTERNS[@]}"; do
-        if grep -qi "$pattern" "$output_file"; then
-            has_completion_signal=true
-            ((confidence_score+=15))
-            work_summary="No work remaining"
-            break
-        fi
-    done
+    if [[ "$allow_completion_heuristics" == "true" ]]; then
+        for pattern in "${NO_WORK_PATTERNS[@]}"; do
+            if grep -qi "$pattern" "$output_file"; then
+                has_completion_signal=true
+                ((confidence_score+=15))
+                work_summary="No work remaining"
+                break
+            fi
+        done
+    fi
 
     # 6. Check for file changes (git integration)
     if command -v git &>/dev/null && git rev-parse --git-dir >/dev/null 2>&1; then
