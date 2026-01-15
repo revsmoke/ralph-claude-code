@@ -331,7 +331,7 @@ should_exit_gracefully() {
             evidence_verified="true"
         else
             # Run verification gates to ensure artifacts exist
-            if run_all_verifications 2>/dev/null; then
+            if run_all_verifications >/dev/null 2>&1; then
                 evidence_verified="true"
                 log_status "INFO" "Evidence verification passed - exit allowed" >&2
             else
