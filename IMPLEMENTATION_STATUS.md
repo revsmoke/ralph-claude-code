@@ -1,7 +1,7 @@
 # Implementation Status Summary
 
-**Last Updated**: 2026-01-10
-**Version**: v0.9.8
+**Last Updated**: 2026-01-15
+**Version**: v0.9.9
 **Overall Status**: Phase 1 in progress (core complete, documentation remaining)
 
 ---
@@ -118,6 +118,9 @@
 ---
 
 ## Recent Completions
+
+### v0.9.9 (2026-01-15)
+- Suppressed evidence verification stdout in `ralph_loop.sh` to prevent premature exit reasons from stdout leakage
 
 ### v0.9.8 (2026-01-10)
 - Modern CLI for PRD import with JSON output
