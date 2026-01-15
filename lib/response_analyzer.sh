@@ -85,6 +85,11 @@ parse_json_response() {
 
     # Exit signal: from flat format OR derived from completion_status
     local exit_signal=$(jq -r '.exit_signal // false' "$output_file" 2>/dev/null)
+    local explicit_exit_signal_found=false
+    local has_exit_signal_field=$(jq -r 'has("exit_signal")' "$output_file" 2>/dev/null)
+    if [[ "$has_exit_signal_field" == "true" ]]; then
+        explicit_exit_signal_found=true
+    fi
 
     # Work type: from flat format
     local work_type=$(jq -r '.work_type // "UNKNOWN"' "$output_file" 2>/dev/null)
@@ -104,7 +109,32 @@ parse_json_response() {
     fi
 
     # Summary: from flat format OR from result field (Claude CLI format)
-    local summary=$(jq -r '.result // .summary // ""' "$output_file" 2>/dev/null)
+    local result_text=$(jq -r '.result // empty' "$output_file" 2>/dev/null)
+    local summary=""
+    if [[ -n "$result_text" ]]; then
+        summary="$result_text"
+    else
+        summary=$(jq -r '.summary // ""' "$output_file" 2>/dev/null)
+    fi
+
+    # Parse RALPH_STATUS block embedded in JSON result (if present)
+    # This ensures EXIT_SIGNAL is honored in JSON output mode
+    if [[ -n "$result_text" ]] && echo "$result_text" | grep -q -- "---RALPH_STATUS---"; then
+        local status_line=$(echo "$result_text" | grep "STATUS:" | head -1 | cut -d: -f2 | xargs)
+        local exit_sig_line=$(echo "$result_text" | grep "EXIT_SIGNAL:" | head -1 | cut -d: -f2 | xargs)
+
+        if [[ "$status_line" == "COMPLETE" ]]; then
+            status="COMPLETE"
+        fi
+
+        if [[ -n "$exit_sig_line" ]]; then
+            explicit_exit_signal_found=true
+            exit_signal="$exit_sig_line"
+        elif [[ "$status_line" == "COMPLETE" ]]; then
+            explicit_exit_signal_found=true
+            exit_signal="true"
+        fi
+    fi
 
     # Session ID: from Claude CLI format (sessionId) OR from metadata.session_id
     local session_id=$(jq -r '.sessionId // .metadata.session_id // ""' "$output_file" 2>/dev/null)
@@ -119,11 +149,20 @@ parse_json_response() {
     local progress_count=$(jq -r '.metadata.progress_indicators | if . then length else 0 end' "$output_file" 2>/dev/null)
 
     # Normalize values
-    # Convert exit_signal to boolean string
-    if [[ "$exit_signal" == "true" || "$status" == "COMPLETE" || "$completion_status" == "complete" || "$completion_status" == "COMPLETE" ]]; then
-        exit_signal="true"
+    # Convert exit_signal to boolean string, respecting explicit EXIT_SIGNAL when provided
+    exit_signal=$(echo "$exit_signal" | tr '[:upper:]' '[:lower:]')
+    if [[ "$explicit_exit_signal_found" == "true" ]]; then
+        if [[ "$exit_signal" == "true" ]]; then
+            exit_signal="true"
+        else
+            exit_signal="false"
+        fi
     else
-        exit_signal="false"
+        if [[ "$exit_signal" == "true" || "$status" == "COMPLETE" || "$completion_status" == "complete" || "$completion_status" == "COMPLETE" ]]; then
+            exit_signal="true"
+        else
+            exit_signal="false"
+        fi
     fi
 
     # Determine is_test_only from work_type
@@ -145,10 +184,16 @@ parse_json_response() {
     # Ensure progress_count is integer
     progress_count=$((progress_count + 0))
 
-    # Calculate has_completion_signal
+    # Calculate has_completion_signal (respect explicit EXIT_SIGNAL=false)
     local has_completion_signal="false"
-    if [[ "$status" == "COMPLETE" || "$exit_signal" == "true" ]]; then
-        has_completion_signal="true"
+    if [[ "$explicit_exit_signal_found" == "true" ]]; then
+        if [[ "$exit_signal" == "true" ]]; then
+            has_completion_signal="true"
+        fi
+    else
+        if [[ "$status" == "COMPLETE" || "$exit_signal" == "true" ]]; then
+            has_completion_signal="true"
+        fi
     fi
 
     # Boost confidence based on structured data availability

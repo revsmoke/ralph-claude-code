@@ -153,6 +153,50 @@ EOF
     assert_equal "$exit_signal" "true"
 }
 
+@test "parse_json_response honors RALPH_STATUS EXIT_SIGNAL inside JSON result" {
+    local output_file="$LOG_DIR/test_output.log"
+
+    cat > "$output_file" << 'EOF'
+{
+    "result": "Done with implementation.\n\n---RALPH_STATUS---\nSTATUS: COMPLETE\nEXIT_SIGNAL: true\n---END_RALPH_STATUS---\n",
+    "metadata": {
+        "files_changed": 2,
+        "completion_status": "in_progress"
+    }
+}
+EOF
+
+    run parse_json_response "$output_file"
+    local result_file=".json_parse_result"
+
+    [[ -f "$result_file" ]] || skip "parse_json_response not yet implemented"
+
+    local exit_signal=$(jq -r '.exit_signal' "$result_file")
+    assert_equal "$exit_signal" "true"
+}
+
+@test "parse_json_response does not override explicit EXIT_SIGNAL false from RALPH_STATUS" {
+    local output_file="$LOG_DIR/test_output.log"
+
+    cat > "$output_file" << 'EOF'
+{
+    "result": "Work phase done.\n\n---RALPH_STATUS---\nSTATUS: COMPLETE\nEXIT_SIGNAL: false\n---END_RALPH_STATUS---\n",
+    "metadata": {
+        "files_changed": 5,
+        "completion_status": "complete"
+    }
+}
+EOF
+
+    run parse_json_response "$output_file"
+    local result_file=".json_parse_result"
+
+    [[ -f "$result_file" ]] || skip "parse_json_response not yet implemented"
+
+    local exit_signal=$(jq -r '.exit_signal' "$result_file")
+    assert_equal "$exit_signal" "false"
+}
+
 @test "parse_json_response maps IN_PROGRESS status to non-exit signal" {
     local output_file="$LOG_DIR/test_output.log"
 
