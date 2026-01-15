@@ -380,3 +380,50 @@ exit 0' > test_runner.sh
     local status=$(jq -r '.verification_gates.tests_passed.status' .ralph_evidence.json)
     [ "$status" = "VERIFIED" ]
 }
+
+# =============================================================================
+# ERROR RESILIENCE TESTS (3 tests)
+# =============================================================================
+
+@test "run_all_verifications continues when gate throws error" {
+    init_evidence_collector
+
+    # Ensure all gates will fail or skip
+    rm -rf docs/generated
+    rm -f @fix_plan.md
+
+    # Run should complete without crashing
+    run_all_verifications || true
+
+    # Verify overall_status was updated (not crashed)
+    [ -f ".ralph_evidence.json" ]
+    local gates_failed=$(jq -r '.overall_status.gates_failed // -1' .ralph_evidence.json)
+    [ "$gates_failed" -ge 0 ]
+}
+
+@test "run_all_verifications updates JSON even with failures" {
+    init_evidence_collector
+
+    run_all_verifications || true
+
+    # Should have updated last_updated timestamp
+    [ -f ".ralph_evidence.json" ]
+    local last_updated=$(jq -r '.last_updated' .ralph_evidence.json)
+    [ "$last_updated" != "null" ]
+    [ -n "$last_updated" ]
+}
+
+@test "all gates run even when first gate fails" {
+    init_evidence_collector
+
+    # Set up so tests fail (no package.json) but docs pass
+    rm -f package.json
+    mkdir -p docs/generated
+    echo "# API" > docs/generated/API.md
+
+    run_all_verifications || true
+
+    # Verify docs gate still ran and passed
+    local docs_status=$(jq -r '.verification_gates.documentation_exists.status' .ralph_evidence.json)
+    [ "$docs_status" = "VERIFIED" ]
+}

@@ -594,114 +594,14 @@ verify_fix_plan() {
 # COMPOSITE VERIFICATION
 # =============================================================================
 
-# Run all verification gates
-# Usage: run_all_verifications [options]
-# Returns: 0 if all required gates pass, 1 if any fail
-run_all_verifications() {
-    local skip_tests=${SKIP_TEST_VERIFICATION:-false}
-    local skip_cli=${SKIP_CLI_VERIFICATION:-false}
+# Helper function to safely update overall status
+# Ensures status.json is always updated, even on error
+# Usage: _update_overall_status gates_verified gates_failed gates_skipped
+_update_overall_status() {
+    local gates_verified=${1:-0}
+    local gates_failed=${2:-0}
+    local gates_skipped=${3:-0}
 
-    init_evidence_collector
-
-    local gates_verified=0
-    local gates_failed=0
-    local gates_skipped=0
-
-    echo -e "${BLUE}Running evidence verification gates...${NC}"
-
-    # 1. Tests (can be skipped)
-    if [[ "$skip_tests" != "true" ]]; then
-        echo -n "  Tests: "
-        if verify_tests; then
-            echo -e "${GREEN}VERIFIED${NC}"
-            ((gates_verified++))
-        else
-            local test_status=$(jq -r '.verification_gates.tests_passed.status' "$EVIDENCE_FILE" 2>/dev/null)
-            if [[ "$test_status" == "$GATE_SKIPPED" ]]; then
-                echo -e "${YELLOW}SKIPPED${NC}"
-                ((gates_skipped++))
-            else
-                echo -e "${RED}FAILED${NC}"
-                ((gates_failed++))
-            fi
-        fi
-    else
-        ((gates_skipped++))
-    fi
-
-    # 2. Documentation
-    echo -n "  Documentation: "
-    if verify_documentation; then
-        echo -e "${GREEN}VERIFIED${NC}"
-        ((gates_verified++))
-    else
-        local doc_status=$(jq -r '.verification_gates.documentation_exists.status' "$EVIDENCE_FILE" 2>/dev/null)
-        if [[ "$doc_status" == "$GATE_SKIPPED" ]]; then
-            echo -e "${YELLOW}SKIPPED${NC}"
-            ((gates_skipped++))
-        else
-            echo -e "${RED}FAILED${NC}"
-            ((gates_failed++))
-        fi
-    fi
-
-    # 3. CLI (can be skipped)
-    if [[ "$skip_cli" != "true" ]]; then
-        echo -n "  CLI Functional: "
-        if verify_cli; then
-            echo -e "${GREEN}VERIFIED${NC}"
-            ((gates_verified++))
-        else
-            local cli_status=$(jq -r '.verification_gates.cli_functional.status' "$EVIDENCE_FILE" 2>/dev/null)
-            if [[ "$cli_status" == "$GATE_SKIPPED" ]]; then
-                echo -e "${YELLOW}SKIPPED${NC}"
-                ((gates_skipped++))
-            else
-                echo -e "${RED}FAILED${NC}"
-                ((gates_failed++))
-            fi
-        fi
-    else
-        ((gates_skipped++))
-    fi
-
-    # 4. File Changes
-    echo -n "  Files Modified: "
-    if verify_file_changes; then
-        echo -e "${GREEN}VERIFIED${NC}"
-        ((gates_verified++))
-    else
-        echo -e "${RED}FAILED${NC}"
-        ((gates_failed++))
-    fi
-
-    # 5. Commits Made
-    echo -n "  Commits Made: "
-    if verify_commits; then
-        echo -e "${GREEN}VERIFIED${NC}"
-        ((gates_verified++))
-    else
-        echo -e "${RED}FAILED${NC}"
-        ((gates_failed++))
-    fi
-
-    # 6. Fix Plan Complete
-    echo -n "  Fix Plan: "
-    if verify_fix_plan; then
-        echo -e "${GREEN}VERIFIED${NC}"
-        ((gates_verified++))
-    else
-        local plan_status=$(jq -r '.verification_gates.fix_plan_complete.status' "$EVIDENCE_FILE" 2>/dev/null)
-        if [[ "$plan_status" == "$GATE_SKIPPED" ]]; then
-            echo -e "${YELLOW}SKIPPED${NC}"
-            ((gates_skipped++))
-        else
-            echo -e "${RED}FAILED${NC}"
-            ((gates_failed++))
-        fi
-    fi
-
-    # Update overall status
     local all_gates_passed=false
     local exit_allowed=false
 
@@ -711,26 +611,205 @@ run_all_verifications() {
         exit_allowed=true
     fi
 
-    local evidence=$(cat "$EVIDENCE_FILE")
+    # Ensure evidence file exists before updating
+    if [[ ! -f "$EVIDENCE_FILE" ]]; then
+        init_evidence_collector
+    fi
+
+    local evidence=$(cat "$EVIDENCE_FILE" 2>/dev/null || echo '{}')
     evidence=$(echo "$evidence" | jq \
         --argjson all_gates_passed "$all_gates_passed" \
         --argjson gates_verified "$gates_verified" \
         --argjson gates_failed "$gates_failed" \
         --argjson gates_skipped "$gates_skipped" \
         --argjson exit_allowed "$exit_allowed" \
+        --arg last_updated "$(get_iso_timestamp)" \
         '.overall_status = {
             all_gates_passed: $all_gates_passed,
             gates_verified: $gates_verified,
             gates_failed: $gates_failed,
             gates_skipped: $gates_skipped,
             exit_allowed: $exit_allowed
-        }')
+        } | .last_updated = $last_updated' 2>/dev/null || echo "$evidence")
 
-    echo "$evidence" > "$EVIDENCE_FILE"
+    echo "$evidence" > "$EVIDENCE_FILE" 2>/dev/null || true
+}
+
+# Helper to run a verification gate with error protection
+# Usage: _run_gate_safely gate_name gate_function [skip_flag]
+# Returns: 0 if verified/skipped, 1 if failed
+_run_gate_safely() {
+    local gate_name=$1
+    local gate_function=$2
+    local skip_flag=${3:-false}
+    local status_field=$4
+
+    if [[ "$skip_flag" == "true" ]]; then
+        return 2  # Skipped
+    fi
+
+    # Run gate in subshell to protect against set -e side effects
+    local gate_result=0
+    (
+        set +e  # Disable exit on error within subshell
+        $gate_function
+    ) && gate_result=0 || gate_result=$?
+
+    # Check result and return appropriate code
+    if [[ $gate_result -eq 0 ]]; then
+        return 0  # Verified
+    else
+        # Check if gate marked itself as skipped
+        local gate_status=$(jq -r ".verification_gates.$status_field.status // \"FAILED\"" "$EVIDENCE_FILE" 2>/dev/null)
+        if [[ "$gate_status" == "$GATE_SKIPPED" ]]; then
+            return 2  # Skipped
+        fi
+        return 1  # Failed
+    fi
+}
+
+# Run all verification gates
+# Usage: run_all_verifications [options]
+# Returns: 0 if all required gates pass, 1 if any fail
+run_all_verifications() {
+    local skip_tests=${SKIP_TEST_VERIFICATION:-false}
+    local skip_cli=${SKIP_CLI_VERIFICATION:-false}
+
+    init_evidence_collector
+
+    # Use safe arithmetic (avoid ((var++)) which returns 1 when incrementing from 0)
+    local gates_verified=0
+    local gates_failed=0
+    local gates_skipped=0
+
+    # Trap to ensure overall status is always updated, even on error
+    trap '_update_overall_status "$gates_verified" "$gates_failed" "$gates_skipped"' EXIT
+
+    echo -e "${BLUE}Running evidence verification gates...${NC}"
+
+    # 1. Tests (can be skipped)
+    echo -n "  Tests: "
+    if [[ "$skip_tests" == "true" ]]; then
+        echo -e "${YELLOW}SKIPPED${NC} (flag)"
+        gates_skipped=$((gates_skipped + 1))
+    else
+        # Run in subshell for error protection
+        local test_result=0
+        (set +e; verify_tests) && test_result=0 || test_result=$?
+
+        if [[ $test_result -eq 0 ]]; then
+            echo -e "${GREEN}VERIFIED${NC}"
+            gates_verified=$((gates_verified + 1))
+        else
+            local test_status=$(jq -r '.verification_gates.tests_passed.status // "FAILED"' "$EVIDENCE_FILE" 2>/dev/null)
+            if [[ "$test_status" == "$GATE_SKIPPED" ]]; then
+                echo -e "${YELLOW}SKIPPED${NC}"
+                gates_skipped=$((gates_skipped + 1))
+            else
+                echo -e "${RED}FAILED${NC}"
+                gates_failed=$((gates_failed + 1))
+            fi
+        fi
+    fi
+
+    # 2. Documentation
+    echo -n "  Documentation: "
+    local doc_result=0
+    (set +e; verify_documentation) && doc_result=0 || doc_result=$?
+
+    if [[ $doc_result -eq 0 ]]; then
+        echo -e "${GREEN}VERIFIED${NC}"
+        gates_verified=$((gates_verified + 1))
+    else
+        local doc_status=$(jq -r '.verification_gates.documentation_exists.status // "FAILED"' "$EVIDENCE_FILE" 2>/dev/null)
+        if [[ "$doc_status" == "$GATE_SKIPPED" ]]; then
+            echo -e "${YELLOW}SKIPPED${NC}"
+            gates_skipped=$((gates_skipped + 1))
+        else
+            echo -e "${RED}FAILED${NC}"
+            gates_failed=$((gates_failed + 1))
+        fi
+    fi
+
+    # 3. CLI (can be skipped)
+    echo -n "  CLI Functional: "
+    if [[ "$skip_cli" == "true" ]]; then
+        echo -e "${YELLOW}SKIPPED${NC} (flag)"
+        gates_skipped=$((gates_skipped + 1))
+    else
+        local cli_result=0
+        (set +e; verify_cli) && cli_result=0 || cli_result=$?
+
+        if [[ $cli_result -eq 0 ]]; then
+            echo -e "${GREEN}VERIFIED${NC}"
+            gates_verified=$((gates_verified + 1))
+        else
+            local cli_status=$(jq -r '.verification_gates.cli_functional.status // "FAILED"' "$EVIDENCE_FILE" 2>/dev/null)
+            if [[ "$cli_status" == "$GATE_SKIPPED" ]]; then
+                echo -e "${YELLOW}SKIPPED${NC}"
+                gates_skipped=$((gates_skipped + 1))
+            else
+                echo -e "${RED}FAILED${NC}"
+                gates_failed=$((gates_failed + 1))
+            fi
+        fi
+    fi
+
+    # 4. File Changes
+    echo -n "  Files Modified: "
+    local files_result=0
+    (set +e; verify_file_changes) && files_result=0 || files_result=$?
+
+    if [[ $files_result -eq 0 ]]; then
+        echo -e "${GREEN}VERIFIED${NC}"
+        gates_verified=$((gates_verified + 1))
+    else
+        echo -e "${RED}FAILED${NC}"
+        gates_failed=$((gates_failed + 1))
+    fi
+
+    # 5. Commits Made
+    echo -n "  Commits Made: "
+    local commits_result=0
+    (set +e; verify_commits) && commits_result=0 || commits_result=$?
+
+    if [[ $commits_result -eq 0 ]]; then
+        echo -e "${GREEN}VERIFIED${NC}"
+        gates_verified=$((gates_verified + 1))
+    else
+        echo -e "${RED}FAILED${NC}"
+        gates_failed=$((gates_failed + 1))
+    fi
+
+    # 6. Fix Plan Complete
+    echo -n "  Fix Plan: "
+    local plan_result=0
+    (set +e; verify_fix_plan) && plan_result=0 || plan_result=$?
+
+    if [[ $plan_result -eq 0 ]]; then
+        echo -e "${GREEN}VERIFIED${NC}"
+        gates_verified=$((gates_verified + 1))
+    else
+        local plan_status=$(jq -r '.verification_gates.fix_plan_complete.status // "FAILED"' "$EVIDENCE_FILE" 2>/dev/null)
+        if [[ "$plan_status" == "$GATE_SKIPPED" ]]; then
+            echo -e "${YELLOW}SKIPPED${NC}"
+            gates_skipped=$((gates_skipped + 1))
+        else
+            echo -e "${RED}FAILED${NC}"
+            gates_failed=$((gates_failed + 1))
+        fi
+    fi
+
+    # Update overall status (also called by trap on exit)
+    _update_overall_status "$gates_verified" "$gates_failed" "$gates_skipped"
+
+    # Clear trap since we updated manually
+    trap - EXIT
 
     echo ""
     echo -e "${BLUE}Summary:${NC} $gates_verified verified, $gates_failed failed, $gates_skipped skipped"
 
+    local exit_allowed=$(jq -r '.overall_status.exit_allowed // false' "$EVIDENCE_FILE" 2>/dev/null)
     if [[ "$exit_allowed" == "true" ]]; then
         echo -e "${GREEN}Exit allowed: YES${NC}"
         return 0
