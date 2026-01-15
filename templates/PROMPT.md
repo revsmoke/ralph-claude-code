@@ -59,6 +59,46 @@ Set EXIT_SIGNAL to **true** when ALL of these conditions are met:
 3. ✅ No errors or warnings in the last execution
 4. ✅ All requirements from specs/ are implemented
 5. ✅ You have nothing meaningful left to implement
+6. ✅ Evidence verification gates pass (tests run, docs exist, commits made)
+
+## 🔒 Evidence Requirements for EXIT_SIGNAL: true
+
+Before setting `EXIT_SIGNAL: true`, verify ALL of these evidence gates pass:
+
+| Gate | Command to Verify | Expected Result |
+|------|-------------------|-----------------|
+| Tests Pass | `npm test` / `bun test` / `pytest` | Exit code 0, all tests pass |
+| Docs Exist | `ls docs/generated/` | At least 1 file present OR README.md updated |
+| CLI Works | `<cli> --help` | Exit code 0, help text shown (if applicable) |
+| Files Changed | `git diff --stat` | At least 1 file modified during session |
+| Commits Made | `git log --oneline -3` | At least 1 commit made during session |
+| Plan Complete | Check @fix_plan.md | All `- [ ]` items are now `- [x]` |
+
+### Evidence in Status Block
+
+When signaling exit, include verification evidence in your recommendation:
+
+```
+---RALPH_STATUS---
+STATUS: COMPLETE
+TASKS_COMPLETED_THIS_LOOP: 1
+FILES_MODIFIED: 12
+TESTS_STATUS: PASSING
+WORK_TYPE: DOCUMENTATION
+EXIT_SIGNAL: true
+EVIDENCE_VERIFIED: true
+RECOMMENDATION: All requirements met - Tests=15/15, Docs=2, Commits=5, Files=12
+---END_RALPH_STATUS---
+```
+
+### Evidence Verification Failures
+
+If evidence verification fails, Ralph will continue the loop even with EXIT_SIGNAL=true.
+To avoid this, ensure you:
+- Run the test suite before claiming completion
+- Create at least one commit with your changes
+- Update documentation (README.md or docs/generated/)
+- Mark all @fix_plan.md items as complete
 
 ### Examples of proper status reporting:
 
