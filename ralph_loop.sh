@@ -10,6 +10,7 @@ SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 source "$SCRIPT_DIR/lib/date_utils.sh"
 source "$SCRIPT_DIR/lib/response_analyzer.sh"
 source "$SCRIPT_DIR/lib/circuit_breaker.sh"
+source "$SCRIPT_DIR/lib/evidence_collector.sh"
 
 # Configuration
 PROMPT_FILE="PROMPT.md"
@@ -68,6 +69,9 @@ EXIT_SIGNALS_FILE=".exit_signals"
 MAX_CONSECUTIVE_TEST_LOOPS=3
 MAX_CONSECUTIVE_DONE_SIGNALS=2
 TEST_PERCENTAGE_THRESHOLD=30  # If more than 30% of recent loops are test-only, flag it
+
+# Evidence verification configuration (Phase 1.3)
+SKIP_EVIDENCE_VERIFICATION=false  # When true, skip evidence verification on exit
 
 # Colors for terminal output
 RED='\033[0;31m'
@@ -309,19 +313,40 @@ should_exit_gracefully() {
         return 0
     fi
     
-    # 3. Strong completion indicators (only if Claude's EXIT_SIGNAL is true)
+    # 3. Strong completion indicators (only if Claude's EXIT_SIGNAL is true AND evidence verified)
     # This prevents premature exits when heuristics detect completion patterns
     # but Claude explicitly indicates work is still in progress via RALPH_STATUS block.
     # The exit_signal in .response_analysis represents Claude's explicit intent.
+    # Evidence verification adds a third gate to ensure artifacts (tests, docs, commits) exist.
     local claude_exit_signal="false"
     if [[ -f ".response_analysis" ]]; then
         claude_exit_signal=$(jq -r '.analysis.exit_signal // false' ".response_analysis" 2>/dev/null || echo "false")
     fi
 
-    if [[ $recent_completion_indicators -ge 2 ]] && [[ "$claude_exit_signal" == "true" ]]; then
-        log_status "WARN" "Exit condition: Strong completion indicators ($recent_completion_indicators) with EXIT_SIGNAL=true" >&2
+    # Evidence verification gate - runs only when Claude signals exit
+    local evidence_verified="false"
+    if [[ "$claude_exit_signal" == "true" ]]; then
+        if [[ "$SKIP_EVIDENCE_VERIFICATION" == "true" ]]; then
+            log_status "INFO" "DEBUG: Evidence verification skipped (--skip-evidence flag)" >&2
+            evidence_verified="true"
+        else
+            # Run verification gates to ensure artifacts exist
+            if run_all_verifications 2>/dev/null; then
+                evidence_verified="true"
+                log_status "INFO" "Evidence verification passed - exit allowed" >&2
+            else
+                log_status "WARN" "Evidence verification failed - continuing despite EXIT_SIGNAL=true" >&2
+                log_evidence_failures >&2
+            fi
+        fi
+    fi
+
+    if [[ $recent_completion_indicators -ge 2 ]] && [[ "$claude_exit_signal" == "true" ]] && [[ "$evidence_verified" == "true" ]]; then
+        log_status "WARN" "Exit condition: Strong completion indicators ($recent_completion_indicators) with EXIT_SIGNAL=true and evidence verified" >&2
         echo "project_complete"
         return 0
+    elif [[ $recent_completion_indicators -ge 2 ]] && [[ "$claude_exit_signal" == "true" ]]; then
+        log_status "INFO" "DEBUG: EXIT_SIGNAL=true but evidence verification failed, continuing..." >&2
     elif [[ $recent_completion_indicators -ge 2 ]]; then
         log_status "INFO" "DEBUG: Completion indicators ($recent_completion_indicators) present but EXIT_SIGNAL=false, continuing..." >&2
     fi
@@ -1182,12 +1207,18 @@ Modern CLI Options (Phase 1.1):
     --no-continue           Disable session continuity across loops
     --session-expiry HOURS  Set session expiration time in hours (default: $CLAUDE_SESSION_EXPIRY_HOURS)
 
+Evidence Verification Options (Phase 1.3):
+    --verify-evidence       Run evidence verification gates and exit
+    --evidence-status       Show current evidence verification status and exit
+    --skip-evidence         Skip evidence verification when exiting (escape hatch)
+
 Files created:
     - $LOG_DIR/: All execution logs
     - $DOCS_DIR/: Generated documentation
     - $STATUS_FILE: Current status (JSON)
     - .ralph_session: Session lifecycle tracking
     - .ralph_session_history: Session transition history (last 50)
+    - .ralph_evidence.json: Evidence verification results
     - .call_count: API call counter for rate limiting
     - .last_reset: Timestamp of last rate limit reset
 
@@ -1204,6 +1235,9 @@ Examples:
     $0 --output-format text     # Use legacy text output format
     $0 --no-continue            # Disable session continuity
     $0 --session-expiry 48      # 48-hour session expiration
+    $0 --verify-evidence        # Run evidence verification gates
+    $0 --evidence-status        # Show evidence verification status
+    $0 --skip-evidence          # Skip evidence verification on exit
 
 HELPEOF
 }
@@ -1300,6 +1334,26 @@ while [[ $# -gt 0 ]]; do
             fi
             CLAUDE_SESSION_EXPIRY_HOURS="$2"
             shift 2
+            ;;
+        --verify-evidence)
+            # Run evidence verification gates and exit
+            init_evidence_collector
+            if run_all_verifications; then
+                echo -e "\033[0;32m✅ All evidence verification gates passed\033[0m"
+                exit 0
+            else
+                echo -e "\033[0;31m❌ Some evidence verification gates failed\033[0m"
+                exit 1
+            fi
+            ;;
+        --evidence-status)
+            # Show current evidence verification status and exit
+            show_evidence_status
+            exit 0
+            ;;
+        --skip-evidence)
+            SKIP_EVIDENCE_VERIFICATION=true
+            shift
             ;;
         *)
             echo "Unknown option: $1"
