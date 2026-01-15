@@ -21,7 +21,7 @@ PROGRESS_FILE="progress.json"
 CLAUDE_CODE_CMD="claude"
 MAX_CALLS_PER_HOUR=100  # Adjust based on your plan
 VERBOSE_PROGRESS=false  # Default: no verbose progress updates
-CLAUDE_TIMEOUT_MINUTES=15  # Default: 15 minutes timeout for Claude Code execution
+CLAUDE_TIMEOUT_MINUTES=30  # Default: 30 minutes timeout for Claude Code execution
 SLEEP_DURATION=3600     # 1 hour in seconds
 CALL_COUNT_FILE=".call_count"
 TIMESTAMP_FILE=".last_reset"
@@ -632,6 +632,45 @@ run_preflight_checks() {
 
     log_status "SUCCESS" "Preflight checks passed"
     return 0
+}
+
+# Reset all Ralph state files for a fresh start
+# Usage: reset_all_state
+reset_all_state() {
+    log_status "INFO" "Resetting all Ralph state files..."
+
+    local state_files=(
+        ".call_count"
+        ".last_reset"
+        ".exit_signals"
+        ".response_analysis"
+        ".ralph_session"
+        ".ralph_session_history"
+        ".claude_session_id"
+        ".circuit_breaker_state"
+        ".circuit_breaker_history"
+        ".ralph_evidence.json"
+        ".last_output_length"
+        ".json_parse_result"
+    )
+
+    local removed_count=0
+
+    for file in "${state_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            rm "$file"
+            log_status "INFO" "  Removed: $file"
+            ((removed_count++))
+        fi
+    done
+
+    if [[ $removed_count -eq 0 ]]; then
+        log_status "INFO" "No state files found to remove"
+    else
+        log_status "SUCCESS" "State reset complete - removed $removed_count file(s)"
+    fi
+
+    log_status "INFO" "Ready for fresh run"
 }
 
 # Build loop context for Claude Code session
@@ -1380,6 +1419,7 @@ Options:
     --reset-circuit         Reset circuit breaker to CLOSED state
     --circuit-status        Show circuit breaker status and exit
     --reset-session         Reset session state and exit (clears session continuity)
+    --reset-all             Reset ALL state files for a completely fresh run
 
 Modern CLI Options (Phase 1.1):
     --output-format FORMAT  Set Claude output format: json or text (default: $CLAUDE_OUTPUT_FORMAT)
@@ -1418,6 +1458,7 @@ Examples:
     $0 --verify-evidence        # Run evidence verification gates
     $0 --evidence-status        # Show evidence verification status
     $0 --skip-evidence          # Skip evidence verification on exit
+    $0 --reset-all              # Clear all state files for fresh run
 
 HELPEOF
 }
@@ -1478,6 +1519,11 @@ while [[ $# -gt 0 ]]; do
             source "$SCRIPT_DIR/lib/date_utils.sh"
             reset_session "manual_reset_flag"
             echo -e "\033[0;32m✅ Session state reset successfully\033[0m"
+            exit 0
+            ;;
+        --reset-all)
+            # Reset ALL state files for a fresh start
+            reset_all_state
             exit 0
             ;;
         --circuit-status)
