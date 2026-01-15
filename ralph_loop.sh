@@ -456,6 +456,184 @@ validate_allowed_tools() {
     return 0
 }
 
+# =============================================================================
+# PREFLIGHT CHECKS (Phase 1.3)
+# =============================================================================
+
+# Check if a required tool exists
+# Usage: check_tool_exists "tool_name"
+# Returns: 0 if exists, 1 if missing
+check_tool_exists() {
+    local tool=$1
+    if command -v "$tool" &>/dev/null; then
+        return 0
+    else
+        log_status "ERROR" "Required tool '$tool' is not installed"
+        return 1
+    fi
+}
+
+# Suggest a tool permission if not already allowed
+# Usage: suggest_tool_permission "Bash(bun *)"
+suggest_tool_permission() {
+    local tool=$1
+    local current_tools="$CLAUDE_ALLOWED_TOOLS"
+
+    # Check if tool is already in the allowed list
+    if [[ "$current_tools" == *"$tool"* ]]; then
+        return 0
+    fi
+
+    # Check if tool pattern is broadly allowed
+    local tool_base=$(echo "$tool" | cut -d'(' -f1)
+    if [[ "$current_tools" == *"$tool_base"* ]] && [[ "$tool_base" != "Bash" ]]; then
+        return 0
+    fi
+
+    # Special case: if Bash is allowed without restriction, all Bash patterns work
+    if [[ "$tool" == Bash* ]] && [[ "$current_tools" == *"Bash,"* || "$current_tools" == *",Bash" || "$current_tools" == "Bash" ]]; then
+        return 0
+    fi
+
+    log_status "WARN" "Suggested tool permission: $tool"
+    log_status "WARN" "  Add to --allowed-tools: $current_tools,$tool"
+    log_status "WARN" "  Or add to .claude/settings.local.json"
+}
+
+# Check for tool permissions in settings file
+# Usage: check_settings_permissions
+check_settings_permissions() {
+    local settings_file=".claude/settings.local.json"
+
+    if [[ ! -f "$settings_file" ]]; then
+        log_status "INFO" "No .claude/settings.local.json found (using --allowed-tools defaults)"
+        return 0
+    fi
+
+    # Check for allowedTools in settings
+    local settings_tools=$(jq -r '.allowedTools // empty' "$settings_file" 2>/dev/null)
+    if [[ -n "$settings_tools" ]]; then
+        log_status "INFO" "Found tool permissions in $settings_file"
+    fi
+
+    return 0
+}
+
+# Detect project type and suggest appropriate permissions
+# Usage: detect_project_type
+detect_project_type() {
+    local detected=""
+
+    # Node.js / Bun project
+    if [[ -f "package.json" ]]; then
+        if [[ -f "bun.lockb" ]] || command -v bun &>/dev/null; then
+            detected="Bun/Node.js"
+            log_status "INFO" "Detected: Bun/Node.js project"
+            suggest_tool_permission "Bash(bun *)"
+            suggest_tool_permission "Bash(npm *)"
+        else
+            detected="Node.js"
+            log_status "INFO" "Detected: Node.js project"
+            suggest_tool_permission "Bash(npm *)"
+            suggest_tool_permission "Bash(node *)"
+        fi
+    fi
+
+    # Python project
+    if [[ -f "requirements.txt" ]] || [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]]; then
+        detected="Python"
+        log_status "INFO" "Detected: Python project"
+        suggest_tool_permission "Bash(python *)"
+        suggest_tool_permission "Bash(pytest *)"
+        suggest_tool_permission "Bash(pip *)"
+    fi
+
+    # Rust project
+    if [[ -f "Cargo.toml" ]]; then
+        detected="Rust"
+        log_status "INFO" "Detected: Rust project"
+        suggest_tool_permission "Bash(cargo *)"
+    fi
+
+    # Go project
+    if [[ -f "go.mod" ]]; then
+        detected="Go"
+        log_status "INFO" "Detected: Go project"
+        suggest_tool_permission "Bash(go *)"
+    fi
+
+    if [[ -z "$detected" ]]; then
+        log_status "INFO" "No specific project type detected"
+    fi
+}
+
+# Run all preflight checks before starting the main loop
+# Usage: run_preflight_checks
+# Returns: 0 if all checks pass, 1 if critical checks fail
+run_preflight_checks() {
+    local errors=0
+    local warnings=0
+
+    log_status "INFO" "Running preflight checks..."
+
+    # 1. Check required tools
+    echo -n "  Checking required tools: "
+    if check_tool_exists "jq"; then
+        if check_tool_exists "git"; then
+            echo -e "${GREEN}OK${NC}"
+        else
+            echo -e "${RED}FAIL${NC}"
+            ((errors++))
+        fi
+    else
+        echo -e "${RED}FAIL${NC}"
+        ((errors++))
+    fi
+
+    # 2. Check PROMPT.md exists
+    echo -n "  Checking PROMPT.md: "
+    if [[ -f "$PROMPT_FILE" ]]; then
+        echo -e "${GREEN}OK${NC}"
+    else
+        echo -e "${RED}MISSING${NC}"
+        log_status "ERROR" "PROMPT.md not found - Ralph requires this file"
+        log_status "ERROR" "Run 'ralph-setup <project-name>' to create a new project"
+        ((errors++))
+    fi
+
+    # 3. Detect project type and suggest permissions
+    echo -n "  Detecting project type: "
+    detect_project_type
+    echo -e "${GREEN}OK${NC}"
+
+    # 4. Check settings file
+    echo -n "  Checking settings: "
+    check_settings_permissions
+    echo -e "${GREEN}OK${NC}"
+
+    # 5. Check Claude CLI is available
+    echo -n "  Checking Claude CLI: "
+    if command -v "$CLAUDE_CODE_CMD" &>/dev/null; then
+        echo -e "${GREEN}OK${NC}"
+        check_claude_version
+    else
+        echo -e "${RED}MISSING${NC}"
+        log_status "ERROR" "Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
+        ((errors++))
+    fi
+
+    echo ""
+
+    if [[ $errors -gt 0 ]]; then
+        log_status "ERROR" "Preflight checks failed: $errors error(s)"
+        log_status "ERROR" "Fix the issues above before continuing"
+        return 1
+    fi
+
+    log_status "SUCCESS" "Preflight checks passed"
+    return 0
+}
+
 # Build loop context for Claude Code session
 # Provides loop-specific context via --append-system-prompt
 build_loop_context() {
@@ -1036,32 +1214,34 @@ loop_count=0
 
 # Main loop
 main() {
-    
+
     log_status "SUCCESS" "🚀 Ralph loop starting with Claude Code"
     log_status "INFO" "Max calls per hour: $MAX_CALLS_PER_HOUR"
     log_status "INFO" "Logs: $LOG_DIR/ | Docs: $DOCS_DIR/ | Status: $STATUS_FILE"
-    
-    # Check if this is a Ralph project directory
-    if [[ ! -f "$PROMPT_FILE" ]]; then
-        log_status "ERROR" "Prompt file '$PROMPT_FILE' not found!"
+
+    # Run preflight checks (includes PROMPT.md verification, tool detection, etc.)
+    if ! run_preflight_checks; then
         echo ""
-        
-        # Check if this looks like a partial Ralph project
-        if [[ -f "@fix_plan.md" ]] || [[ -d "specs" ]] || [[ -f "@AGENT.md" ]]; then
-            echo "This appears to be a Ralph project but is missing PROMPT.md."
-            echo "You may need to create or restore the PROMPT.md file."
-        else
-            echo "This directory is not a Ralph project."
+
+        # Provide additional guidance if PROMPT.md is missing
+        if [[ ! -f "$PROMPT_FILE" ]]; then
+            # Check if this looks like a partial Ralph project
+            if [[ -f "@fix_plan.md" ]] || [[ -d "specs" ]] || [[ -f "@AGENT.md" ]]; then
+                echo "This appears to be a Ralph project but is missing PROMPT.md."
+                echo "You may need to create or restore the PROMPT.md file."
+            else
+                echo "This directory is not a Ralph project."
+            fi
+
+            echo ""
+            echo "To fix this:"
+            echo "  1. Create a new project: ralph-setup my-project"
+            echo "  2. Import existing requirements: ralph-import requirements.md"
+            echo "  3. Navigate to an existing Ralph project directory"
+            echo "  4. Or create PROMPT.md manually in this directory"
+            echo ""
+            echo "Ralph projects should contain: PROMPT.md, @fix_plan.md, specs/, src/, etc."
         fi
-        
-        echo ""
-        echo "To fix this:"
-        echo "  1. Create a new project: ralph-setup my-project"
-        echo "  2. Import existing requirements: ralph-import requirements.md"
-        echo "  3. Navigate to an existing Ralph project directory"
-        echo "  4. Or create PROMPT.md manually in this directory"
-        echo ""
-        echo "Ralph projects should contain: PROMPT.md, @fix_plan.md, specs/, src/, etc."
         exit 1
     fi
 
