@@ -87,7 +87,7 @@ install_scripts() {
     # Copy templates to Ralph home
     cp -r "$SCRIPT_DIR/templates/"* "$RALPH_HOME/templates/"
 
-    # Copy lib scripts (response_analyzer.sh, circuit_breaker.sh)
+    # Copy lib scripts (response_analyzer.sh, circuit_breaker.sh, evidence_collector.sh, date_utils.sh)
     cp -r "$SCRIPT_DIR/lib/"* "$RALPH_HOME/lib/"
     
     # Create the main ralph command

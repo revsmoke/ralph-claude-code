@@ -1,6 +1,6 @@
 # Ralph for Claude Code - Implementation Plan
 
-**Version**: v0.9.8 | **Tests**: 276 passing (100% pass rate) | **CI/CD**: GitHub Actions
+**Version**: v0.9.9 | **Tests**: 344 passing (100% pass rate) | **CI/CD**: GitHub Actions
 
 ---
 
