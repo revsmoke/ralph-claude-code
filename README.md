@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/frankbria/ralph-claude-code/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/ralph-claude-code/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.9.9-blue)
-![Tests](https://img.shields.io/badge/tests-344%20passing-green)
+![Version](https://img.shields.io/badge/version-0.9.10-blue)
+![Tests](https://img.shields.io/badge/tests-359%20passing-green)
 [![GitHub Issues](https://img.shields.io/github/issues/frankbria/ralph-claude-code)](https://github.com/frankbria/ralph-claude-code/issues)
 [![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge.svg)](https://github.com/hesreallyhim/awesome-claude-code)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
@@ -16,9 +16,9 @@ Ralph is an implementation of the Geoffrey Huntley's technique for Claude Code t
 
 ## Project Status
 
-**Version**: v0.9.9 - Active Development
+**Version**: v0.9.10 - Active Development
 **Core Features**: Working and tested
-**Test Coverage**: 344 tests, 100% pass rate
+**Test Coverage**: 359 tests, 100% pass rate
 
 ### What's Working Now
 - Autonomous development loops with intelligent exit detection
@@ -33,15 +33,28 @@ Ralph is an implementation of the Geoffrey Huntley's technique for Claude Code t
 - **Session expiration with configurable timeout (default: 24 hours)**
 - **Modern CLI flags: `--output-format`, `--allowed-tools`, `--no-continue`**
 - **State management: `--reset-all`, `--verify-evidence`, `--evidence-status`**
+- **Heartbeat logging**: Periodic "still running" messages during long Claude calls
+- **Heartbeat CLI flags: `--heartbeat`, `--no-heartbeat`, `--heartbeat-interval N`**
+- **status.json enhancements**: Evidence summary and circuit breaker state included
 - Multi-line error matching for accurate stuck loop detection
 - 5-hour API limit handling with user prompts
 - tmux integration for live monitoring
 - PRD import functionality
 - **CI/CD pipeline with GitHub Actions**
 - **Dedicated uninstall script for clean removal**
-- 344 passing tests across 13 test files
+- 359 passing tests across 13 test files
 
 ### Recent Improvements
+
+**v0.9.10 - Reliability Improvements**
+Based on lessons learned from the Driftwarden v2 assessment:
+- **Bun lockfile detection fix**: Now detects `bun.lock` (v1.1+ text format) alongside `bun.lockb`
+- **Error-resilient evidence gates**: All gates run even if earlier gates fail; JSON always updated
+- **Heartbeat logging**: Periodic "still running" messages every 60 seconds by default
+- **New CLI flags**: `--heartbeat`, `--no-heartbeat`, `--heartbeat-interval N`
+- **status.json enhancements**: Now includes evidence summary and circuit breaker state
+- **Monitor dashboard**: Evidence verification section added to `ralph_monitor.sh`
+- Added 15 new tests; Test count: 359 (up from 344)
 
 **v0.9.9 - Evidence Verification & Preflight Checks**
 Based on lessons learned from real-world usage (Driftwarden project):

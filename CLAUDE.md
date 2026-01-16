@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the Ralph for Claude Code repository - an autonomous AI development loop system that enables continuous development cycles with intelligent exit detection and rate limiting.
 
-**Version**: v0.9.9 | **Tests**: 344 passing (100% pass rate) | **CI/CD**: GitHub Actions
+**Version**: v0.9.10 | **Tests**: 359 passing (100% pass rate) | **CI/CD**: GitHub Actions
 
 ## Core Architecture
 
@@ -348,19 +348,19 @@ Ralph uses advanced error detection with two-stage filtering to eliminate false 
 
 ## Test Suite
 
-### Test Files (344 tests total)
+### Test Files (359 tests total)
 
 | File | Tests | Description |
 |------|-------|-------------|
 | `test_cli_parsing.bats` | 27 | CLI argument parsing for all 12 flags |
-| `test_cli_modern.bats` | 29 | Modern CLI commands (Phase 1.1) + build_claude_command fix |
+| `test_cli_modern.bats` | 35 | Modern CLI commands + heartbeat + build_claude_command |
 | `test_json_parsing.bats` | 38 | JSON output format parsing + Claude CLI format + session management |
 | `test_session_continuity.bats` | 42 | Session lifecycle management + circuit breaker integration |
 | `test_exit_detection.bats` | 31 | Exit signal detection |
 | `test_rate_limiting.bats` | 15 | Rate limiting behavior |
-| `test_evidence_collector.bats` | 20 | Evidence verification gates (tests, docs, CLI, files, commits, plan) |
-| `test_preflight.bats` | 14 | Preflight checks, project detection, reset-all flag |
-| `test_loop_execution.bats` | 20 | Integration tests |
+| `test_evidence_collector.bats` | 25 | Evidence verification gates + error resilience + bun.lock detection |
+| `test_preflight.bats` | 15 | Preflight checks, project detection, reset-all, bun.lock |
+| `test_loop_execution.bats` | 23 | Integration tests + status.json enhancements |
 | `test_edge_cases.bats` | 25 | Edge case handling |
 | `test_installation.bats` | 14 | Global installation/uninstall workflows |
 | `test_project_setup.bats` | 36 | Project setup (setup.sh) validation |
@@ -379,6 +379,37 @@ bats tests/unit/test_cli_parsing.bats
 ```
 
 ## Recent Improvements
+
+### Reliability Improvements (v0.9.10)
+
+Based on lessons learned from the Driftwarden v2 assessment, this release adds four reliability improvements:
+
+**Bun Lockfile Detection Fix**
+- Added detection of `bun.lock` (v1.1+ text format) alongside `bun.lockb` (legacy binary)
+- Fixes evidence collector falling back to `npm test` in modern Bun projects
+- Preflight checks now correctly identify Bun projects with either lockfile format
+
+**Error-Resilient Evidence Gates**
+- Added `_update_overall_status()` helper for safe status updates
+- Each gate runs in subshell with `set +e` to prevent script exit on errors
+- Added EXIT trap to ensure `.ralph_evidence.json` is always updated
+- All gates run even if earlier gates fail unexpectedly
+
+**Heartbeat Logging for Long Claude Calls**
+- Periodic "still running" messages every 60 seconds by default
+- `format_elapsed_time()` helper for human-readable durations (e.g., "1h 2m 5s")
+- New CLI flags: `--heartbeat`, `--no-heartbeat`, `--heartbeat-interval N`
+- Prevents user interruption during long executions
+
+**Evidence Summary in status.json**
+- `update_status()` now includes evidence gate summary and circuit breaker state
+- New fields: `evidence.gates_verified`, `evidence.gates_failed`, `evidence.exit_allowed`
+- New fields: `circuit_breaker.state`, `circuit_breaker.no_progress_count`
+- `ralph_monitor.sh` now displays evidence verification section in dashboard
+
+**Testing**
+- Added 15 new tests (359 total, 100% pass rate)
+- Tests for Bun detection, error resilience, heartbeat, status.json enhancements
 
 ### Evidence Verification & Preflight Checks (v0.9.9)
 
