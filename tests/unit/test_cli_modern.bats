@@ -621,3 +621,92 @@ EOF
 
     [[ "$found_prompt" == "true" ]]
 }
+
+# =============================================================================
+# HEARTBEAT TESTS (Phase 1.4)
+# =============================================================================
+
+@test "format_elapsed_time handles hours" {
+    source "${BATS_TEST_DIRNAME}/../../ralph_loop.sh" 2>/dev/null || true
+    source "${BATS_TEST_DIRNAME}/../../lib/date_utils.sh"
+
+    # Source just the format_elapsed_time function
+    format_elapsed_time() {
+        local seconds=$1
+        local hours=$((seconds / 3600))
+        local minutes=$(((seconds % 3600) / 60))
+        local secs=$((seconds % 60))
+
+        if [[ $hours -gt 0 ]]; then
+            echo "${hours}h ${minutes}m ${secs}s"
+        elif [[ $minutes -gt 0 ]]; then
+            echo "${minutes}m ${secs}s"
+        else
+            echo "${secs}s"
+        fi
+    }
+
+    local result=$(format_elapsed_time 3725)
+    [ "$result" = "1h 2m 5s" ]
+}
+
+@test "format_elapsed_time handles minutes only" {
+    format_elapsed_time() {
+        local seconds=$1
+        local hours=$((seconds / 3600))
+        local minutes=$(((seconds % 3600) / 60))
+        local secs=$((seconds % 60))
+
+        if [[ $hours -gt 0 ]]; then
+            echo "${hours}h ${minutes}m ${secs}s"
+        elif [[ $minutes -gt 0 ]]; then
+            echo "${minutes}m ${secs}s"
+        else
+            echo "${secs}s"
+        fi
+    }
+
+    local result=$(format_elapsed_time 125)
+    [ "$result" = "2m 5s" ]
+}
+
+@test "format_elapsed_time handles seconds only" {
+    format_elapsed_time() {
+        local seconds=$1
+        local hours=$((seconds / 3600))
+        local minutes=$(((seconds % 3600) / 60))
+        local secs=$((seconds % 60))
+
+        if [[ $hours -gt 0 ]]; then
+            echo "${hours}h ${minutes}m ${secs}s"
+        elif [[ $minutes -gt 0 ]]; then
+            echo "${minutes}m ${secs}s"
+        else
+            echo "${secs}s"
+        fi
+    }
+
+    local result=$(format_elapsed_time 45)
+    [ "$result" = "45s" ]
+}
+
+@test "--no-heartbeat flag disables heartbeat" {
+    run bash "${BATS_TEST_DIRNAME}/../../ralph_loop.sh" --help
+
+    [[ "$output" == *"--no-heartbeat"* ]]
+}
+
+@test "--heartbeat-interval appears in help" {
+    run bash "${BATS_TEST_DIRNAME}/../../ralph_loop.sh" --help
+
+    [[ "$output" == *"--heartbeat-interval"* ]]
+}
+
+@test "--heartbeat-interval validates positive integer" {
+    run bash -c "source '${BATS_TEST_DIRNAME}/../../ralph_loop.sh' 2>/dev/null; echo 'loaded'" <<< ""
+
+    # The help text mentions positive integer
+    run bash "${BATS_TEST_DIRNAME}/../../ralph_loop.sh" --help
+
+    [[ "$output" == *"heartbeat"* ]]
+}

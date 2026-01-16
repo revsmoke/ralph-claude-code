@@ -73,6 +73,11 @@ TEST_PERCENTAGE_THRESHOLD=30  # If more than 30% of recent loops are test-only, 
 # Evidence verification configuration (Phase 1.3)
 SKIP_EVIDENCE_VERIFICATION=false  # When true, skip evidence verification on exit
 
+# Heartbeat configuration (Phase 1.4)
+# Log periodic "still running" messages to reassure users during long executions
+HEARTBEAT_INTERVAL_SECONDS=60     # Log heartbeat every 60 seconds
+HEARTBEAT_ENABLED=true            # Enable by default to prevent user interruption
+
 # Colors for terminal output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -194,6 +199,23 @@ log_status() {
     
     echo -e "${color}[$timestamp] [$level] $message${NC}"
     echo "[$timestamp] [$level] $message" >> "$LOG_DIR/ralph.log"
+}
+
+# Format elapsed seconds as human-readable string
+# Usage: format_elapsed_time 3725 -> "1h 2m 5s"
+format_elapsed_time() {
+    local seconds=$1
+    local hours=$((seconds / 3600))
+    local minutes=$(((seconds % 3600) / 60))
+    local secs=$((seconds % 60))
+
+    if [[ $hours -gt 0 ]]; then
+        echo "${hours}h ${minutes}m ${secs}s"
+    elif [[ $minutes -gt 0 ]]; then
+        echo "${minutes}m ${secs}s"
+    else
+        echo "${secs}s"
+    fi
 }
 
 # Update status JSON for external monitoring
@@ -1118,6 +1140,7 @@ execute_claude_code() {
     # Get PID and monitor progress
     local claude_pid=$!
     local progress_counter=0
+    local last_heartbeat_time=$(get_epoch_seconds)
 
     # Show progress while Claude Code is running
     while kill -0 $claude_pid 2>/dev/null; do
@@ -1128,6 +1151,8 @@ execute_claude_code() {
             3) progress_indicator="⠹" ;;
             0) progress_indicator="⠸" ;;
         esac
+
+        local elapsed_seconds=$((progress_counter * 10))
 
         # Get last line from output if available
         local last_line=""
@@ -1140,11 +1165,23 @@ execute_claude_code() {
 {
     "status": "executing",
     "indicator": "$progress_indicator",
-    "elapsed_seconds": $((progress_counter * 10)),
+    "elapsed_seconds": $elapsed_seconds,
     "last_output": "$last_line",
     "timestamp": "$(date '+%Y-%m-%d %H:%M:%S')"
 }
 EOF
+
+        # Heartbeat logging - periodic reassurance to prevent user interruption
+        if [[ "$HEARTBEAT_ENABLED" == "true" ]]; then
+            local current_time=$(get_epoch_seconds)
+            local since_heartbeat=$((current_time - last_heartbeat_time))
+
+            if [[ $since_heartbeat -ge $HEARTBEAT_INTERVAL_SECONDS ]]; then
+                local elapsed_formatted=$(format_elapsed_time $elapsed_seconds)
+                log_status "INFO" "💓 Claude Code still running... ($elapsed_formatted elapsed)"
+                last_heartbeat_time=$current_time
+            fi
+        fi
 
         # Only log if verbose mode is enabled
         if [[ "$VERBOSE_PROGRESS" == "true" ]]; then
@@ -1433,6 +1470,11 @@ Evidence Verification Options (Phase 1.3):
     --evidence-status       Show current evidence verification status and exit
     --skip-evidence         Skip evidence verification when exiting (escape hatch)
 
+Heartbeat Options (Phase 1.4):
+    --heartbeat             Enable heartbeat logging (default: on)
+    --no-heartbeat          Disable heartbeat logging
+    --heartbeat-interval N  Set heartbeat interval in seconds (default: $HEARTBEAT_INTERVAL_SECONDS)
+
 Files created:
     - $LOG_DIR/: All execution logs
     - $DOCS_DIR/: Generated documentation
@@ -1460,6 +1502,8 @@ Examples:
     $0 --evidence-status        # Show evidence verification status
     $0 --skip-evidence          # Skip evidence verification on exit
     $0 --reset-all              # Clear all state files for fresh run
+    $0 --no-heartbeat           # Disable heartbeat logging
+    $0 --heartbeat-interval 120 # Log heartbeat every 2 minutes
 
 HELPEOF
 }
@@ -1581,6 +1625,23 @@ while [[ $# -gt 0 ]]; do
         --skip-evidence)
             SKIP_EVIDENCE_VERIFICATION=true
             shift
+            ;;
+        --heartbeat)
+            HEARTBEAT_ENABLED=true
+            shift
+            ;;
+        --no-heartbeat)
+            HEARTBEAT_ENABLED=false
+            shift
+            ;;
+        --heartbeat-interval)
+            if [[ -n "$2" && "$2" =~ ^[1-9][0-9]*$ ]]; then
+                HEARTBEAT_INTERVAL_SECONDS="$2"
+            else
+                echo "Error: --heartbeat-interval requires a positive integer (seconds)"
+                exit 1
+            fi
+            shift 2
             ;;
         *)
             echo "Unknown option: $1"
