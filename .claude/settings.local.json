@@ -23,7 +23,19 @@
       "Bash(timeout 30 bats:*)",
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(git fetch:*)",
-      "Bash(npm run test:unit:*)"
+      "Bash(npm run test:unit:*)",
+      "Bash(implementation and documentation work in one run\" and \"Resetting)",
+      "Bash(state files helped when re-running a clean loop.\"\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(find:*)",
+      "Bash(npm test:*)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code log --oneline --all)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code branch:*)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code show fix/evidence-gate-stdout:lib/evidence_collector.sh)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code diff main fix/evidence-gate-stdout -- lib/evidence_collector.sh)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code log fix/evidence-gate-stdout --oneline -5)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code log -p fix/evidence-gate-stdout -1 -- lib/evidence_collector.sh)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code show 99d7fb0 --stat)",
+      "Bash(git -C /Users/twoedge/dev/ralph-claude-code show 99d7fb0)"
     ],
     "deny": [],
     "ask": []
