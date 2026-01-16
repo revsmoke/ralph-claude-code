@@ -225,7 +225,34 @@ update_status() {
     local last_action=$3
     local status=$4
     local exit_reason=${5:-""}
-    
+
+    # Get evidence summary if available
+    local evidence_summary="{}"
+    if [[ -f "$EVIDENCE_FILE" ]]; then
+        evidence_summary=$(jq -c '{
+            gates_verified: .overall_status.gates_verified,
+            gates_failed: .overall_status.gates_failed,
+            gates_skipped: .overall_status.gates_skipped,
+            exit_allowed: .overall_status.exit_allowed,
+            last_verified: .last_updated,
+            tests: .verification_gates.tests_passed.status,
+            docs: .verification_gates.documentation_exists.status,
+            files: .verification_gates.files_modified.status,
+            commits: .verification_gates.commits_made.status,
+            fix_plan: .verification_gates.fix_plan_complete.status
+        }' "$EVIDENCE_FILE" 2>/dev/null || echo '{}')
+    fi
+
+    # Get circuit breaker state if available
+    local circuit_breaker="{}"
+    if [[ -f ".circuit_breaker_state" ]]; then
+        circuit_breaker=$(jq -c '{
+            state: .state,
+            no_progress_count: .no_progress_count,
+            error_count: .error_count
+        }' ".circuit_breaker_state" 2>/dev/null || echo '{}')
+    fi
+
     cat > "$STATUS_FILE" << STATUSEOF
 {
     "timestamp": "$(get_iso_timestamp)",
@@ -235,7 +262,9 @@ update_status() {
     "last_action": "$last_action",
     "status": "$status",
     "exit_reason": "$exit_reason",
-    "next_reset": "$(get_next_hour_time)"
+    "next_reset": "$(get_next_hour_time)",
+    "evidence": $evidence_summary,
+    "circuit_breaker": $circuit_breaker
 }
 STATUSEOF
 }

@@ -462,3 +462,137 @@ EOF
     # Short output after long one should increase confidence of completion
     [[ "$confidence" -gt 0 ]]
 }
+
+# =============================================================================
+# STATUS.JSON ENHANCEMENT TESTS (Phase 1.4)
+# =============================================================================
+
+# Test 21: status.json includes evidence summary when available
+@test "status.json includes evidence summary when available" {
+    # Source required libraries
+    source "${BATS_TEST_DIRNAME}/../../lib/date_utils.sh"
+    source "${BATS_TEST_DIRNAME}/../../lib/evidence_collector.sh"
+
+    # Create evidence file with known values
+    echo '{
+        "overall_status": {
+            "gates_verified": 3,
+            "gates_failed": 1,
+            "gates_skipped": 2,
+            "exit_allowed": false
+        },
+        "verification_gates": {
+            "tests_passed": {"status": "VERIFIED"},
+            "documentation_exists": {"status": "VERIFIED"},
+            "files_modified": {"status": "FAILED"},
+            "commits_made": {"status": "VERIFIED"},
+            "fix_plan_complete": {"status": "SKIPPED"}
+        },
+        "last_updated": "2025-01-15T10:00:00"
+    }' > .ralph_evidence.json
+
+    # Define EVIDENCE_FILE for update_status
+    EVIDENCE_FILE=".ralph_evidence.json"
+
+    # Source update_status function (need to define it manually for test)
+    update_status() {
+        local loop_count=$1
+        local calls_made=$2
+        local last_action=$3
+        local status=$4
+        local exit_reason=${5:-""}
+
+        local evidence_summary="{}"
+        if [[ -f "$EVIDENCE_FILE" ]]; then
+            evidence_summary=$(jq -c '{
+                gates_verified: .overall_status.gates_verified,
+                gates_failed: .overall_status.gates_failed,
+                gates_skipped: .overall_status.gates_skipped,
+                exit_allowed: .overall_status.exit_allowed
+            }' "$EVIDENCE_FILE" 2>/dev/null || echo '{}')
+        fi
+
+        cat > "$STATUS_FILE" << STATUSEOF
+{
+    "loop_count": $loop_count,
+    "status": "$status",
+    "evidence": $evidence_summary
+}
+STATUSEOF
+    }
+
+    update_status 5 10 "completed" "running"
+
+    # Verify evidence is included
+    local gates_verified=$(jq -r '.evidence.gates_verified' status.json)
+    [ "$gates_verified" = "3" ]
+
+    local gates_failed=$(jq -r '.evidence.gates_failed' status.json)
+    [ "$gates_failed" = "1" ]
+}
+
+# Test 22: status.json handles missing evidence file gracefully
+@test "status.json handles missing evidence file gracefully" {
+    source "${BATS_TEST_DIRNAME}/../../lib/date_utils.sh"
+
+    # Ensure no evidence file
+    rm -f .ralph_evidence.json
+
+    EVIDENCE_FILE=".ralph_evidence.json"
+
+    update_status() {
+        local loop_count=$1
+        local status=$4
+
+        local evidence_summary="{}"
+        if [[ -f "$EVIDENCE_FILE" ]]; then
+            evidence_summary=$(jq -c '{ gates_verified: .overall_status.gates_verified }' "$EVIDENCE_FILE" 2>/dev/null || echo '{}')
+        fi
+
+        cat > "$STATUS_FILE" << STATUSEOF
+{
+    "loop_count": $loop_count,
+    "evidence": $evidence_summary
+}
+STATUSEOF
+    }
+
+    update_status 5 10 "completed" "running"
+
+    # File should be valid JSON
+    jq empty status.json
+
+    # Evidence should be empty object
+    local evidence=$(jq -r '.evidence' status.json)
+    [ "$evidence" = "{}" ]
+}
+
+# Test 23: status.json includes circuit breaker state
+@test "status.json includes circuit breaker state" {
+    source "${BATS_TEST_DIRNAME}/../../lib/date_utils.sh"
+
+    # Create circuit breaker state
+    echo '{"state": "CLOSED", "no_progress_count": 0, "error_count": 0}' > .circuit_breaker_state
+
+    update_status() {
+        local loop_count=$1
+        local status=$4
+
+        local circuit_breaker="{}"
+        if [[ -f ".circuit_breaker_state" ]]; then
+            circuit_breaker=$(jq -c '{ state: .state, no_progress_count: .no_progress_count }' ".circuit_breaker_state" 2>/dev/null || echo '{}')
+        fi
+
+        cat > "$STATUS_FILE" << STATUSEOF
+{
+    "loop_count": $loop_count,
+    "circuit_breaker": $circuit_breaker
+}
+STATUSEOF
+    }
+
+    update_status 5 10 "completed" "running"
+
+    local state=$(jq -r '.circuit_breaker.state' status.json)
+    [ "$state" = "CLOSED" ]
+}

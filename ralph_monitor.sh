@@ -94,7 +94,38 @@ display_status() {
             echo
         fi
     fi
-    
+
+    # Evidence verification section
+    if [[ -f ".ralph_evidence.json" ]]; then
+        local gates_verified=$(jq -r '.overall_status.gates_verified // 0' .ralph_evidence.json 2>/dev/null)
+        local gates_failed=$(jq -r '.overall_status.gates_failed // 0' .ralph_evidence.json 2>/dev/null)
+        local gates_skipped=$(jq -r '.overall_status.gates_skipped // 0' .ralph_evidence.json 2>/dev/null)
+        local exit_allowed=$(jq -r '.overall_status.exit_allowed // false' .ralph_evidence.json 2>/dev/null)
+        local tests_status=$(jq -r '.verification_gates.tests_passed.status // "PENDING"' .ralph_evidence.json 2>/dev/null)
+        local docs_status=$(jq -r '.verification_gates.documentation_exists.status // "PENDING"' .ralph_evidence.json 2>/dev/null)
+        local files_status=$(jq -r '.verification_gates.files_modified.status // "PENDING"' .ralph_evidence.json 2>/dev/null)
+        local commits_status=$(jq -r '.verification_gates.commits_made.status // "PENDING"' .ralph_evidence.json 2>/dev/null)
+
+        echo -e "${PURPLE}┌─ Evidence Verification ─────────────────────────────────────────────────┐${NC}"
+        echo -e "${PURPLE}│${NC} Gates: ${GREEN}$gates_verified verified${NC}, ${RED}$gates_failed failed${NC}, ${YELLOW}$gates_skipped skipped${NC}"
+
+        # Format gate statuses with colors
+        local tests_color=$([[ "$tests_status" == "VERIFIED" ]] && echo "$GREEN" || ([[ "$tests_status" == "FAILED" ]] && echo "$RED" || echo "$YELLOW"))
+        local docs_color=$([[ "$docs_status" == "VERIFIED" ]] && echo "$GREEN" || ([[ "$docs_status" == "FAILED" ]] && echo "$RED" || echo "$YELLOW"))
+        local files_color=$([[ "$files_status" == "VERIFIED" ]] && echo "$GREEN" || ([[ "$files_status" == "FAILED" ]] && echo "$RED" || echo "$YELLOW"))
+        local commits_color=$([[ "$commits_status" == "VERIFIED" ]] && echo "$GREEN" || ([[ "$commits_status" == "FAILED" ]] && echo "$RED" || echo "$YELLOW"))
+
+        echo -e "${PURPLE}│${NC} Tests: ${tests_color}$tests_status${NC}  Docs: ${docs_color}$docs_status${NC}  Files: ${files_color}$files_status${NC}  Commits: ${commits_color}$commits_status${NC}"
+
+        if [[ "$exit_allowed" == "true" ]]; then
+            echo -e "${PURPLE}│${NC} Exit Allowed: ${GREEN}YES${NC}"
+        else
+            echo -e "${PURPLE}│${NC} Exit Allowed: ${RED}NO${NC}"
+        fi
+        echo -e "${PURPLE}└─────────────────────────────────────────────────────────────────────────┘${NC}"
+        echo
+    fi
+
     # Recent logs
     echo -e "${BLUE}┌─ Recent Activity ───────────────────────────────────────────────────────┐${NC}"
     if [[ -f "$LOG_FILE" ]]; then
