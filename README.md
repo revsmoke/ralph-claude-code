@@ -1,14 +1,23 @@
 # Ralph for Claude Code
 
-[![CI](https://github.com/frankbria/ralph-claude-code/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/ralph-claude-code/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/badge/version-0.9.10-blue)
 ![Tests](https://img.shields.io/badge/tests-359%20passing-green)
-[![GitHub Issues](https://img.shields.io/github/issues/frankbria/ralph-claude-code)](https://github.com/frankbria/ralph-claude-code/issues)
-[![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge.svg)](https://github.com/hesreallyhim/awesome-claude-code)
-[![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
 > **Autonomous AI development loop with intelligent exit detection and rate limiting**
+
+---
+
+**⚠️ This is a fork of [frankbria/ralph-claude-code](https://github.com/frankbria/ralph-claude-code)**
+
+This fork is being tailored towards our specific workflow and discoveries while using Ralph on macOS. Changes include:
+- Reliability improvements based on real-world usage (evidence gates, error resilience)
+- macOS-specific fixes and testing
+- Workflow refinements learned from projects like Driftwarden
+
+For the original project, please visit the [upstream repository](https://github.com/frankbria/ralph-claude-code).
+
+---
 
 Ralph is an implementation of the Geoffrey Huntley's technique for Claude Code that enables continuous autonomous development cycles he named after [Ralph Wiggum](https://ghuntley.com/ralph/). It enables continuous autonomous development cycles where Claude Code iteratively improves your project until completion, with built-in safeguards to prevent infinite loops and API overuse.
 
@@ -544,7 +553,7 @@ If you want to run the test suite:
 # Install BATS testing framework
 npm install -g bats bats-support bats-assert
 
-# Run all tests (344 tests)
+# Run all tests (359 tests)
 npm test
 
 # Run specific test suites
@@ -567,10 +576,10 @@ bats tests/integration/test_installation.bats
 ```
 
 Current test status:
-- **344 tests** across 13 test files
-- **100% pass rate** (344/344 passing)
+- **359 tests** across 13 test files
+- **100% pass rate** (359/359 passing)
 - Comprehensive unit and integration tests
-- Specialized tests for JSON parsing, CLI flags, circuit breaker, EXIT_SIGNAL behavior, evidence verification, preflight checks, and installation workflows
+- Specialized tests for JSON parsing, CLI flags, circuit breaker, EXIT_SIGNAL behavior, evidence verification, preflight checks, heartbeat, and installation workflows
 
 > **Note on Coverage**: Bash code coverage measurement with kcov has fundamental limitations when tracing subprocess executions. Test pass rate (100%) is the quality gate. See [bats-core#15](https://github.com/bats-core/bats-core/issues/15) for details.
 
@@ -654,7 +663,7 @@ cd ralph-claude-code
 
 # Install dependencies and run tests
 npm install
-npm test  # All 344 tests must pass
+npm test  # All 359 tests must pass
 ```
 
 ### Priority Contribution Areas
@@ -744,16 +753,18 @@ tmux attach -t <name>     # Reattach to detached session
 
 Ralph is under active development with a clear path to v1.0.0. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the complete roadmap.
 
-### Current Status: v0.9.9
+### Current Status: v0.9.10
 
 **What's Delivered:**
 - Core loop functionality with intelligent exit detection
 - **Triple-gate exit condition** (completion indicators + EXIT_SIGNAL + evidence verification)
 - **Evidence-based verification** with 6 verification gates
 - **Preflight checks** for project type and tool detection
+- **Heartbeat logging** for long Claude calls (prevents user interruption)
+- **status.json enhancements** with evidence summary and circuit breaker state
 - Rate limiting (100 calls/hour) and circuit breaker pattern
 - Response analyzer with semantic understanding
-- 344 comprehensive tests (100% pass rate)
+- 359 comprehensive tests (100% pass rate)
 - tmux integration and live monitoring
 - PRD import functionality with modern CLI JSON parsing
 - Installation system and project templates
@@ -766,8 +777,8 @@ Ralph is under active development with a clear path to v1.0.0. See [IMPLEMENTATI
 - State reset command (`--reset-all`)
 
 **Test Coverage Breakdown:**
-- Unit Tests: 216 (CLI parsing, JSON, exit detection, rate limiting, session continuity, evidence collector, preflight)
-- Integration Tests: 128 (loop execution, edge cases, installation, project setup, PRD import)
+- Unit Tests: 228 (CLI parsing, JSON, exit detection, rate limiting, session continuity, evidence collector, preflight, heartbeat)
+- Integration Tests: 131 (loop execution, edge cases, installation, project setup, PRD import, status.json)
 - Test Files: 13
 
 ### Path to v1.0.0 (~4 weeks)
